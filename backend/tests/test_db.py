@@ -27,9 +27,17 @@ def test_calendar_unique():
     conn = _conn()
     try:
         with conn.cursor() as cur:
+            cur.execute("insert into users (name) values (%s) returning id", ("test_user",))
+            user_id = cur.fetchone()[0]
+            cur.execute(
+                "insert into listings (title, category, asking_price, currency, seller_note, status) "
+                "values (%s, %s, %s, %s, %s, %s) returning id",
+                ("Test Listing", "monitors", 500, "MYR", "test note", "active"),
+            )
+            listing_id = cur.fetchone()[0]
             cur.execute(
                 "insert into negotiations (user_id, listing_id, max_budget) values (%s, %s, %s) returning id",
-                (1, 1, 500),
+                (user_id, listing_id, 500),
             )
             negotiation_id = cur.fetchone()[0]
             cur.execute(
