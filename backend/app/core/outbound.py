@@ -15,6 +15,19 @@ PRIVATE_PATTERNS = [
     )
 ]
 
+CEILING_CLAIM_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"\b(?:most|best|highest|max(?:imum)?)\b[^.?!]{0,12}\bi can\b",
+        r"\bi can only\s+(?:do|offer|manage|go|pay|afford)\b",
+        r"\ball i can\b",
+        r"\b(?:final|last)\s+(?:offer|price)\b",
+        r"\bstretch\b",
+        r"\b(?:cuma|hanya)\s+boleh\s+(?:tawar|bagi|bayar)\w*",
+        r"\btak boleh lebih\b",
+    )
+]
+
 _AMOUNT = re.compile(
     r"(?<![\w.,])(?P<cur>RM|MYR|\$)?\s?"
     r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
@@ -70,6 +83,20 @@ def check_outbound(text: str, ctx: NegotiationContext, ceiling: Decimal) -> list
                 Violation(
                     code="private_phrase",
                     public_message="The message talks about private limits. Remove that.",
+                    private_detail=pattern.pattern,
+                )
+            )
+            break
+        
+    for pattern in CEILING_CLAIM_PATTERNS:
+        if pattern.search(text):
+            violations.append(
+                Violation(
+                    code="ceiling_claim",
+                    public_message=(
+                        "Do not claim an offer is your maximum, final, or all you can do. "
+                        "Just state the price."
+                    ),
                     private_detail=pattern.pattern,
                 )
             )

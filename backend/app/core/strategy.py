@@ -73,7 +73,7 @@ class StrategyState(BaseModel):
 
 
 class StrategyDecision(BaseModel):
-    kind: Literal["offer", "accept", "walk_away"]
+    kind: Literal["offer", "accept", "walk_away", "ask_question"]
     price: Decimal | None = None
     reason: str = ""  # PRIVATE: may contain numbers, for traces only
 

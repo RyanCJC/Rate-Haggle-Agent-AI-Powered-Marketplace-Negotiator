@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
@@ -107,3 +108,22 @@ def test_mentioning_price_above_offer_is_always_rejected(n):
 def test_clean_offers_within_budget_always_pass(price):
     res = validate_action(MakeOffer(price=price, message=f"I can do RM {price:.2f}"), CTX)
     assert res.ok, res.violations
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "RM 835 is the most I can offer right now.",
+        "I can only do RM 925 for this.",
+        "That is my final offer, RM 800.",
+        "Saya cuma boleh tawarkan RM 835 sahaja.",
+        "Best I can do is RM 800.",
+    ],
+)
+def test_outbound_blocks_false_ceiling_claims(text):
+    found = {v.code for v in check_outbound(text, CTX, Decimal(925))}
+    assert "ceiling_claim" in found
+
+
+def test_outbound_allows_normal_negotiation_language():
+    text = "Hi bro, can we do RM 800? I can only come after 6pm on Saturday."
+    assert check_outbound(text, CTX, Decimal(800)) == []
