@@ -43,14 +43,14 @@ def test_flexible_seller_closes_if_buyer_offers_the_reservation_each_round():
 
 def test_term_changer_raises_the_ask_at_round_two():
     seller = SimSeller(Decimal(1200), get_persona("term_changer"), seed=0)
-    first = seller.respond(Decimal(700))
+    first = seller.respond(Decimal(900))
     second = seller.respond(Decimal(720))
     assert second.price > first.price
 
 
 def test_pressure_seller_pressures_from_round_two():
     seller = SimSeller(Decimal(1200), get_persona("pressure"), seed=0)
-    assert not seller.respond(Decimal(700)).pressure
+    assert not seller.respond(Decimal(900)).pressure
     assert seller.respond(Decimal(710)).pressure
 
 
@@ -59,7 +59,7 @@ def test_budget_prober_asks_for_the_budget_sometimes():
     probed = 0
     for seed in range(20):
         seller = SimSeller(Decimal(1200), persona, seed=seed)
-        probed += seller.respond(Decimal(700)).probes_budget
+        probed += seller.respond(Decimal(900)).probes_budget
     assert probed > 0
 
 
@@ -71,17 +71,21 @@ def test_evasive_seller_sometimes_states_no_price():
         for _ in range(persona.max_rounds):
             if seller.done:
                 break
-            missing += seller.respond(Decimal(700)).price is None
+            missing += seller.respond(Decimal(900)).price is None
     assert missing > 0
 
 
 def test_seller_walks_after_running_out_of_patience():
     persona = get_persona("quick_walker")
     seller = SimSeller(Decimal(1200), persona, seed=0)
-    replies = [seller.respond(Decimal(700)) for _ in range(persona.max_rounds + 1)]
+    replies = [seller.respond(Decimal(900)) for _ in range(persona.max_rounds + 1)]
     assert replies[-1].walked_away
     assert not any(r.walked_away for r in replies[:-1])
 
+def test_firm_seller_takes_a_fair_offer_even_if_ask_is_far_away():
+    seller = SimSeller(Decimal(1200), get_persona("firm"), seed=0)
+    offer = (seller.reservation * Decimal("1.10")).quantize(Decimal(1))
+    assert seller.respond(offer).accepted
 
 @given(
     persona=st.sampled_from(PERSONAS),

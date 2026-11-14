@@ -18,6 +18,8 @@ class Persona(BaseModel):
     term_change_round: int | None = None
     term_change_ratio: float = 0.0  # ask rises by this share at term_change_round
     tags: tuple[str, ...] = ()
+    serious_ratio: float = 0.85  # seller only concedes to offers >= reservation x this
+    accept_premium: float = 0.05  # share above reservation demanded at round 1, fades to 0
 
 
 DEV_PERSONAS = [

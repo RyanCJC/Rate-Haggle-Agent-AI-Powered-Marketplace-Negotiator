@@ -132,6 +132,7 @@ def decide(state: StrategyState, params: StrategyParams) -> StrategyDecision:
         price = max(price, current)
         price = min(price, current + step_cap)
     price = min(price, limit)
+    price = price.to_integral_value(rounding=ROUND_FLOOR)  # whole ringgit only
 
     # 5. Never offer at or above what the seller already asks.
     if last is not None and last <= limit and price >= last:

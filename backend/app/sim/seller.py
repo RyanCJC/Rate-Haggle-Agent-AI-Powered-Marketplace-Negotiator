@@ -100,17 +100,25 @@ class SimSeller:
             self.ask = (self.ask * bump).quantize(ONE, rounding=ROUND_HALF_UP)
             return self._reply("term_change")
 
-        # Accept only at or above the reservation, and close to the current ask.
+        # Accept at or above the reservation. Early on a premium is demanded;
+        # it fades to zero as patience runs out. Never below the reservation.
         if offer is not None:
             close = self.ask * (1 - Decimal(str(p.close_gap)))
-            if offer >= self.reservation and offer >= close:
+            fade = max(0.0, 1 - (self.rounds - 1) / max(1, p.max_rounds - 1))
+            needed = self.reservation * (1 + Decimal(str(p.accept_premium * fade)))
+            if offer >= self.reservation and (offer >= close or offer >= needed):
                 self.done = True
                 text = self._say("accept", price=_money(offer))
                 return SellerReply(price=offer, text=text, accepted=True)
 
-        # Lowball: no movement.
-        if offer is not None and offer < self.ask * Decimal(str(p.lowball_ratio)):
-            return self._reply("lowball")
+        # Lowball or unserious offer: no movement.
+        if offer is not None:
+            line = max(
+                self.ask * Decimal(str(p.lowball_ratio)),
+                self.reservation * Decimal(str(p.serious_ratio)),
+            )
+            if offer < line:
+                return self._reply("lowball")
 
         # Concede a share of the gap, never below the reservation, never upward.
         if offer is not None:
