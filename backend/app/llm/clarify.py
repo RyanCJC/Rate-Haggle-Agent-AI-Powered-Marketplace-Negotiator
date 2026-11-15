@@ -6,8 +6,9 @@ from .client import LLMClient
 
 
 class ClarifyStep(BaseModel):
-    tool: Literal["get_listing", "get_market_stats", "ask_seller", "proceed"]
+    tool: Literal["get_listing", "get_market_stats", "search_knowledge", "ask_seller", "proceed"]
     question: str = ""
+    query: str = ""
 
 
 CLARIFY_SYSTEM = """You are the planning step of a buyer's negotiation agent. Before the buyer \
@@ -15,11 +16,12 @@ replies to the seller you may use tools, in at most a few steps.
 Tools:
 - get_listing: read the listing details.
 - get_market_stats: read asking prices of similar items.
+- search_knowledge: look up buying guidance for this kind of item. Give a short "query".
 - ask_seller: send the seller ONE short question instead of an offer this turn. Use it only when \
 the seller's last message gave no price or changed the terms, and only if questions are left.
 - proceed: stop planning; the buyer will write the normal reply.
-Never put numbers, budgets or limits in a question. Return the tool and, for ask_seller, the \
-question text."""
+Do not repeat a tool whose result you already have. Never put numbers, budgets or limits in a \
+question. Return the tool and, for ask_seller, the question text."""
 
 
 def build_clarify_prompt(

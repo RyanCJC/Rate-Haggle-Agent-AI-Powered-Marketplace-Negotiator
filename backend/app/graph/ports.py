@@ -58,3 +58,24 @@ class SimSellerPort:
             else:
                 port.send_offer(turn, "(replayed)")
         return port
+    
+
+class ScriptedSellerPort:
+    """Replays fixed seller texts. For tests and demos where the wording matters."""
+
+    def __init__(self, replies: list[str]):
+        self.replies = list(replies)
+        self.sent: list[tuple[Decimal | None, str]] = []
+
+    def _next(self) -> str:
+        if not self.replies:
+            raise SellerClosed
+        return self.replies.pop(0)
+
+    def send_offer(self, price: Decimal, message: str) -> str:
+        self.sent.append((price, message))
+        return self._next()
+
+    def send_message(self, message: str) -> str:
+        self.sent.append((None, message))
+        return self._next()

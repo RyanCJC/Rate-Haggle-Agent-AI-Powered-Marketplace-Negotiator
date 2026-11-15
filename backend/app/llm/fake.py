@@ -1,5 +1,7 @@
 import re
 
+from backend.app.knowledge.facts import extract_claims
+
 MONEY = re.compile(r"RM\s?(\d[\d,]*(?:\.\d+)?)", re.IGNORECASE)
 
 
@@ -20,6 +22,8 @@ class RuleBasedLLM:
             return schema.model_validate(self._compose(user))
         if task == "clarify":
             return schema.model_validate(self._clarify(user))
+        if task == "facts":
+            return schema.model_validate(self._facts(user))
         raise ValueError(f"unknown task: {task}")
 
     def _extract(self, user: str) -> dict:
@@ -54,8 +58,18 @@ class RuleBasedLLM:
         asks_left = "Questions left: 0" not in user
         if "get_listing" not in used:
             return {"tool": "get_listing"}
+        if "get_market_stats" not in used:
+            return {"tool": "get_market_stats"}
+        if "search_knowledge" not in used:
+            return {"tool": "search_knowledge", "query": "what to check before buying"}
         if "had a price: no" in user and asks_left:
             return {"tool": "ask_seller", "question": "Could you confirm your best price for it?"}
         if "changed terms: yes" in user and asks_left:
             return {"tool": "ask_seller", "question": "Could you confirm what is included?"}
         return {"tool": "proceed"}
+
+    def _facts(self, user: str) -> dict:
+        match = re.search(r"Seller message: (.*)\nAllowed keys:", user, re.DOTALL)
+        text = match.group(1) if match else ""
+        claims = extract_claims(text, "seller_chat")
+        return {"facts": [{"key": c.key, "value": c.value, "quote": c.quote} for c in claims]}

@@ -28,8 +28,10 @@ def build_graph(
     checkpointer=None,
     approve_each_message: bool = False,
     clarify: bool = False,
+    knowledge=None,
+    ground: bool = False,
 ):
-    nodes = make_nodes(llm, seller)
+    nodes = make_nodes(llm, seller, knowledge=knowledge, ground=ground)
 
     def route_after_plan(s: NegState) -> str:
         return "clarify" if clarify and needs_clarification(s) else "compose"

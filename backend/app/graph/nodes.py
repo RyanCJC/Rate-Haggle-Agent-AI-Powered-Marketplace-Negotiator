@@ -13,8 +13,12 @@ from backend.app.core.models import (
 from backend.app.core.outbound import extract_amounts
 from backend.app.core.strategy import STYLES, StrategyDecision, StrategyState, decide
 from backend.app.core.validate import validate_action
+from backend.app.knowledge.facts import facts_view, merge_claims, required_keys
+from backend.app.knowledge.grounding import ungrounded_claims
+from backend.app.knowledge.market import market_stats
 from backend.app.llm.clarify import choose_clarify_step
 from backend.app.llm.client import LLMError
+from backend.app.llm.facts import propose_claims, verify_claims
 from backend.app.llm.guards import reconcile_intent
 from backend.app.llm.tasks import compose_message, extract_seller_intent, fmt_price
 
@@ -25,6 +29,7 @@ MAX_RETRIES = 2
 MAX_ROUNDS = 25
 MAX_ASKS = 2  # questions per negotiation
 MAX_CLARIFY_STEPS = 4  # tool steps per turn
+MAX_TOOL_CHARS = 1500  # keep tool results from flooding the planner prompt
 PRICE_BOUNDS = (Decimal("0.3"), Decimal("1.5"))  # plausible seller price, share of asking
 
 
@@ -77,7 +82,10 @@ def build_action(decision: StrategyDecision, message: str):
 
 
 def check_draft(
-    decision: StrategyDecision, draft: str | None, ctx: NegotiationContext
+    decision: StrategyDecision,
+    draft: str | None,
+    ctx: NegotiationContext,
+    facts: list[dict] | None = None,
 ) -> list[Violation]:
     if not draft or not draft.strip():
         return [Violation(code="no_draft", public_message="Write a message.")]
@@ -92,21 +100,41 @@ def check_draft(
                 private_detail=f"missing {decision.price}",
             )
         )
+    if facts:
+        invented = ungrounded_claims(draft, facts)
+        if invented:
+            names = ", ".join(sorted({c.key for c in invented}))
+            violations.append(
+                Violation(
+                    code="ungrounded_claim",
+                    public_message=(
+                        f"Do not state item details that are not in the known facts ({names}). "
+                        "Ask about them instead."
+                    ),
+                    private_detail="; ".join(c.quote for c in invented),
+                )
+            )
     return violations
 
 
-def run_tool(name: str, s: NegState) -> str:
-    """Read-only lookups for the clarify loop. In Stage 4 these read real facts."""
+def run_tool(name: str, s: NegState, query: str = "", knowledge=None) -> str:
+    """Read-only lookups for the clarify loop."""
     if name == "get_listing":
         listing = s.get("listing")
-        return json.dumps(listing) if listing else "no listing details available"
-    if name == "get_market_stats":
-        prices = sorted(s.get("comparables") or [])
-        if not prices:
-            return "no comparable prices available"
-        median = prices[len(prices) // 2]
-        return f"{len(prices)} similar items: lowest {prices[0]}, median {median}, highest {prices[-1]}"
-    return f"unknown tool {name}"
+        output = json.dumps(listing) if listing else "no listing details available"
+    elif name == "get_market_stats":
+        stats = market_stats(s.get("comparables") or [])
+        output = stats.describe() if stats else "no comparable prices available"
+    elif name == "search_knowledge":
+        if knowledge is None:
+            output = "knowledge base not available"
+        else:
+            category = (s.get("listing") or {}).get("category")
+            passages = knowledge(query or "what to check before buying", category)
+            output = " | ".join(passages) if passages else "no passages found"
+    else:
+        output = f"unknown tool {name}"
+    return output[:MAX_TOOL_CHARS]
 
 
 def needs_clarification(s: NegState) -> bool:
@@ -118,7 +146,7 @@ def needs_clarification(s: NegState) -> bool:
     )
 
 
-def make_nodes(llm, seller):
+def make_nodes(llm, seller, knowledge=None, ground: bool = False):
     def plan(s: NegState):
         if len(s["our_offers"]) >= MAX_ROUNDS:
             decision = StrategyDecision(kind="walk_away", reason="round cap")
@@ -140,7 +168,9 @@ def make_nodes(llm, seller):
         }
 
     def clarify(s: NegState):
-        trace, notes, results = s["trace"], list(s["notes"]), []
+        trace, notes = s["trace"], list(s["notes"])
+        # start from what earlier turns already looked up, so no tool runs twice
+        results = [tuple(note.split(": ", 1)) for note in notes if ": " in note]
         asks_left = MAX_ASKS - s["asks"]
         for step_no in range(1, MAX_CLARIFY_STEPS + 1):
             try:
@@ -172,7 +202,7 @@ def make_nodes(llm, seller):
                     }
                 trace = [*trace, {"node": "clarify", "note": "ask refused"}]
                 break
-            output = run_tool(step.tool, s)
+            output = run_tool(step.tool, s, step.query, knowledge)
             results.append((step.tool, output))
             notes.append(f"{step.tool}: {output}")
         else:
@@ -189,13 +219,15 @@ def make_nodes(llm, seller):
                 s["style"],
                 s["seller_probed"],
                 s["feedback"],
+                facts=s.get("facts") if ground else None,
             )
         except LLMError as error:
             return {"draft": None, "trace": log(s, "compose", error=str(error)[:200])}
         return {"draft": draft.message, "trace": log(s, "compose", attempt=s["retries"] + 1)}
 
     def validate(s: NegState):
-        violations = check_draft(decision_of(s), s["draft"], context(s))
+        facts = s.get("facts") if ground and s.get("facts") else None
+        violations = check_draft(decision_of(s), s["draft"], context(s), facts)
         ok = not violations
         update = {
             "validation_ok": ok,
@@ -251,6 +283,22 @@ def make_nodes(llm, seller):
             update["our_offers"] = [*s["our_offers"], decision.price]
         return update
 
+    def ground_claims(s: NegState, entry: dict) -> dict:
+        """The LLM proposes claims about the item; only verified ones are kept."""
+        claims_so_far = s.get("claims", [])
+        category = (s.get("listing") or {}).get("category", "")
+        allowed = tuple(dict.fromkeys([*required_keys(category), *(c["key"] for c in claims_so_far)]))
+        try:
+            proposals = propose_claims(llm, s["seller_text"], allowed)
+        except LLMError as error:
+            entry["facts_error"] = str(error)[:200]
+            return {}
+        kept, dropped = verify_claims(proposals, s["seller_text"], allowed)
+        entry["claims_kept"] = [f"{c.key}={c.value}" for c in kept]
+        entry["claims_dropped"] = dropped
+        claims = merge_claims(claims_so_far, kept)
+        return {"claims": claims, "facts": facts_view(claims, category)}
+
     def ingest(s: NegState):
         last_offer = s["our_offers"][-1] if s["our_offers"] else None
         try:
@@ -282,6 +330,8 @@ def make_nodes(llm, seller):
             update["final_price"] = last_offer  # our own offer, not the LLM's claim
         elif intent.walked_away:
             update["outcome"] = "seller_walks"
+        if ground:
+            update.update(ground_claims(s, entry))
         update["trace"] = log(s, "ingest", **entry)
         return update
 

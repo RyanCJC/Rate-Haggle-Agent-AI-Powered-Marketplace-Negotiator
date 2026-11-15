@@ -1,5 +1,8 @@
+from dataclasses import asdict
 from decimal import Decimal
 from typing import TypedDict
+
+from backend.app.knowledge.facts import extract_claims, facts_view
 
 
 class NegState(TypedDict, total=False):
@@ -23,6 +26,8 @@ class NegState(TypedDict, total=False):
     notes: list[str]  # results of clarify tools
     listing: dict | None
     comparables: list[Decimal] | None
+    claims: list[dict]  # {key, value, source, quote}: what each source said about the item
+    facts: list[dict]  # claims reconciled into confirmed / claimed / conflicting / missing
     outcome: str | None  # deal | we_walk | seller_walks | extraction_miss | timeout
     final_price: Decimal | None
     trace: list[dict]
@@ -36,6 +41,12 @@ def initial_state(
     listing: dict | None = None,
     comparables: list[Decimal] | None = None,
 ) -> NegState:
+    claims: list[dict] = []
+    facts: list[dict] = []
+    if listing:
+        text = f"{listing.get('title', '')}. {listing.get('description', '')}"
+        claims = [asdict(c) for c in extract_claims(text, "listing")]
+        facts = facts_view(claims, listing.get("category", ""))
     return {
         "asking_price": Decimal(asking),
         "max_budget": Decimal(budget),
@@ -56,6 +67,8 @@ def initial_state(
         "notes": [],
         "listing": listing,
         "comparables": comparables,
+        "claims": claims,
+        "facts": facts,
         "outcome": None,
         "final_price": None,
         "trace": [],

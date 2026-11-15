@@ -41,12 +41,17 @@ def build_b1_user(history: list[tuple[str, str]]) -> str:
     return "Conversation so far:\n" + "\n".join(lines) + "\nYour move."
 
 
-def play_b1(llm, persona_name: str, budget: int, seed: int = 0, variant: str = "basic") -> Run:
-    seller = SimSeller(ASKING, get_persona(persona_name), seed=seed)
+def play_b1(
+    llm, persona_name: str, budget: int, seed: int = 0, variant: str = "basic", listing=None
+) -> Run:
+    asking = Decimal(listing["asking_price"]) if listing else ASKING
+    seller = SimSeller(asking, get_persona(persona_name), seed=seed)
     port = SimSellerPort(seller)
     system = B1_PROMPTS[variant].format(
-        asking=fmt_price(ASKING), budget=fmt_price(Decimal(budget))
+        asking=fmt_price(asking), budget=fmt_price(Decimal(budget))
     )
+    if listing:
+        system += f"\nListing: {listing['title']}. {listing['description']}"
     history = [("seller", port.opening_text())]
     outcome, final_price, notes = "timeout", None, []
 
@@ -63,7 +68,7 @@ def play_b1(llm, persona_name: str, budget: int, seed: int = 0, variant: str = "
         if move.action == "accept":
             # the price is what the seller really last quoted, not what the model believes
             quotes = [r.price for r in port.log if r.price is not None]
-            outcome, final_price = "deal", (quotes[-1] if quotes else ASKING)
+            outcome, final_price = "deal", (quotes[-1] if quotes else asking)
             break
         if move.action == "offer" and move.price is None:
             outcome = "invalid_move"
@@ -88,4 +93,4 @@ def play_b1(llm, persona_name: str, budget: int, seed: int = 0, variant: str = "
             break
 
     final = {"outcome": outcome, "final_price": final_price, "trace": [], "notes": notes}
-    return Run(final, port, seller, ASKING, Decimal(budget))
+    return Run(final, port, seller, asking, Decimal(budget))
