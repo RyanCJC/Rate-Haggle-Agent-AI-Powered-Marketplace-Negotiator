@@ -30,12 +30,17 @@ def edit_draft(graph, thread_id: str, new_text: str) -> list[Violation]:
     return []
 
 
-def waiting_for(graph, thread_id: str) -> dict | None:
-    """The question a paused run is asking (gate, price, draft), or None."""
-    for task in graph.get_state(make_config(thread_id)).tasks:
+def question_of(state) -> dict | None:
+    """The question in an already-read snapshot (gate, price, draft), or None."""
+    for task in state.tasks:
         for item in task.interrupts:
             return item.value
     return None
+
+
+def waiting_for(graph, thread_id: str) -> dict | None:
+    """The question a paused run is asking (gate, price, draft), or None."""
+    return question_of(graph.get_state(make_config(thread_id)))
 
 
 def decide(graph, thread_id: str, verdict: str):
