@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from collections import deque
 
 from openai import OpenAI
 from pydantic import BaseModel
@@ -48,6 +49,9 @@ class LLMClient:
         self.max_retries = max_retries
         self.use_json_mode = use_json_mode
         self.calls: list[CallRecord] = []
+        self._call_times: deque = deque()
+        self._max_calls_per_minute = 10
+        self._period_seconds = 60.0
         self._client = client or OpenAI(
             base_url=base_url or os.environ.get("LLM_BASE_URL"),
             api_key=api_key or os.environ.get("LLM_API_KEY") or "not-needed",
@@ -64,6 +68,23 @@ class LLMClient:
         ]
         extra = {"response_format": {"type": "json_object"}} if self.use_json_mode else {}
         last_error = ""
+
+        # Rate limit: max 10 LLM calls per minute.
+        now = time.monotonic()
+        while self._call_times and now - self._call_times[0] > self._period_seconds:
+            self._call_times.popleft()
+        if len(self._call_times) >= self._max_calls_per_minute:
+            sleep_for = self._period_seconds - (now - self._call_times[0])
+            if sleep_for > 0:
+                print(
+                    f"Rate limit: {self._max_calls_per_minute} calls/minute reached. "
+                    f"Waiting {sleep_for:.1f}s before next LLM call..."
+                )
+                time.sleep(sleep_for)
+                now = time.monotonic()
+                while self._call_times and now - self._call_times[0] > self._period_seconds:
+                    self._call_times.popleft()
+        self._call_times.append(time.monotonic())
 
         for _ in range(self.max_retries + 1):
             started = time.perf_counter()

@@ -30,11 +30,20 @@ def build_graph(
     clarify: bool = False,
     knowledge=None,
     ground: bool = False,
+    calendar=None,
+    approve_close: bool = False,
 ):
-    nodes = make_nodes(llm, seller, knowledge=knowledge, ground=ground)
+
+    if approve_close and checkpointer is None:
+        raise ValueError("approve_close needs a checkpointer: a paused run must be stored")
+    
+    nodes = make_nodes(llm, seller, knowledge=knowledge, ground=ground, calendar=calendar, approve_close=approve_close)
 
     def route_after_plan(s: NegState) -> str:
         return "clarify" if clarify and needs_clarification(s) else "compose"
+
+    def route_after_finalize(s: NegState) -> str:
+        return "schedule" if calendar is not None and s.get("outcome") == "deal" else END
 
     graph = StateGraph(NegState)
     for name, fn in nodes.items():
@@ -60,7 +69,10 @@ def build_graph(
     graph.add_conditional_edges(
         "ingest", route_after_ingest, {"plan": "plan", "finalize": "finalize"}
     )
-    graph.add_edge("finalize", END)
+    graph.add_conditional_edges(
+        "finalize", route_after_finalize, {"schedule": "schedule", END: END}
+    )
+    graph.add_edge("schedule", END)
     return graph.compile(
         checkpointer=checkpointer,
         interrupt_before=["execute"] if approve_each_message else None,
@@ -78,6 +90,12 @@ def run_graph(
     comparables: list | None = None,
 ):
     state = initial_state(
-        Decimal(asking), Decimal(budget), style, opening_text, listing, comparables
+        Decimal(asking),
+        Decimal(budget),
+        style,
+        opening_text,
+        listing,
+        comparables,
+        run_id=thread_id,
     )
     return graph.invoke(state, config=make_config(thread_id))

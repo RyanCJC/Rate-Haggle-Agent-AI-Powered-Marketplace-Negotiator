@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import asdict
 from decimal import Decimal
 from typing import TypedDict
@@ -6,6 +7,7 @@ from backend.app.knowledge.facts import extract_claims, facts_view
 
 
 class NegState(TypedDict, total=False):
+    run_id: str  # identity of this negotiation; the pickup booking key is built from it
     asking_price: Decimal
     max_budget: Decimal  # PRIVATE: never put in a prompt; prompts use ctx.public_view()
     style: str
@@ -30,6 +32,8 @@ class NegState(TypedDict, total=False):
     facts: list[dict]  # claims reconciled into confirmed / claimed / conflicting / missing
     outcome: str | None  # deal | we_walk | seller_walks | extraction_miss | timeout
     final_price: Decimal | None
+    pickup: dict | None  # result of booking the pickup slot after a deal
+    approvals: list[str] # gates the human approved: close_deal, book_pickup
     trace: list[dict]
 
 
@@ -40,6 +44,7 @@ def initial_state(
     opening_text: str | None = None,
     listing: dict | None = None,
     comparables: list[Decimal] | None = None,
+    run_id: str | None = None,
 ) -> NegState:
     claims: list[dict] = []
     facts: list[dict] = []
@@ -48,6 +53,7 @@ def initial_state(
         claims = [asdict(c) for c in extract_claims(text, "listing")]
         facts = facts_view(claims, listing.get("category", ""))
     return {
+        "run_id": run_id or uuid.uuid4().hex,
         "asking_price": Decimal(asking),
         "max_budget": Decimal(budget),
         "style": style,
@@ -71,5 +77,7 @@ def initial_state(
         "facts": facts,
         "outcome": None,
         "final_price": None,
+        "pickup": None,
+        "approvals": [],
         "trace": [],
     }

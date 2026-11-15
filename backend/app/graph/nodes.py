@@ -1,6 +1,9 @@
 import json
 from decimal import Decimal
 
+from langgraph.types import interrupt
+
+from backend.app.core.calendar_rules import to_myt_iso
 from backend.app.core.models import (
     Accept,
     AskQuestion,
@@ -22,13 +25,14 @@ from backend.app.llm.facts import propose_claims, verify_claims
 from backend.app.llm.guards import reconcile_intent
 from backend.app.llm.tasks import compose_message, extract_seller_intent, fmt_price
 
-from .ports import SellerClosed
+from .ports import CalendarError, SellerClosed
 from .state import NegState
 
 MAX_RETRIES = 2
 MAX_ROUNDS = 25
 MAX_ASKS = 2  # questions per negotiation
 MAX_CLARIFY_STEPS = 4  # tool steps per turn
+MAX_SLOT_TRIES = 3  # free slots to try when booking the pickup
 MAX_TOOL_CHARS = 1500  # keep tool results from flooding the planner prompt
 PRICE_BOUNDS = (Decimal("0.3"), Decimal("1.5"))  # plausible seller price, share of asking
 
@@ -146,7 +150,7 @@ def needs_clarification(s: NegState) -> bool:
     )
 
 
-def make_nodes(llm, seller, knowledge=None, ground: bool = False):
+def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None, approve_close: bool = False):
     def plan(s: NegState):
         if len(s["our_offers"]) >= MAX_ROUNDS:
             decision = StrategyDecision(kind="walk_away", reason="round cap")
@@ -250,10 +254,21 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False):
         history = [*s["history"], ("buyer", draft)]
         price_text = str(decision.price) if decision.price is not None else None
         if decision.kind == "accept":
+            approvals = s.get("approvals", [])
+            if approve_close:
+                # Dynamic pause: the run stops here, saved in the checkpoint, until a verdict.
+                verdict = interrupt({"gate": "close_deal", "price": price_text, "draft": draft})
+                if verdict != "approve":  # anything but the exact word is a refusal
+                    return {
+                        "outcome": "user_declined",
+                        "trace": log(s, "execute", action="accept", declined=True),
+                    }
+                approvals = [*approvals, "close_deal"]
             return {
                 "history": history,
                 "outcome": "deal",
                 "final_price": decision.price,
+                "approvals": approvals,
                 "trace": log(s, "execute", action="accept", price=price_text),
             }
         if decision.kind == "walk_away":
@@ -339,6 +354,34 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False):
         outcome = s.get("outcome") or "timeout"
         return {"outcome": outcome, "trace": log(s, "finalize", outcome=outcome)}
 
+    def schedule(s: NegState):
+        """After a deal, book the earliest free pickup slot. A failure never undoes the deal."""
+        run_id = s.get("run_id")
+        if not run_id:
+            pickup = {"status": "skipped", "detail": "no run id"}
+            return {"pickup": pickup, "trace": log(s, "schedule", **pickup)}
+        approvals = s.get("approvals", [])
+        if approve_close and "close_deal" not in approvals:
+            # The seller accepted our offer, so no close gate ran: confirm before booking.
+            verdict = interrupt({"gate": "book_pickup", "price": str(s.get("final_price"))})
+            if verdict != "approve":
+                pickup = {"status": "declined"}
+                return {"pickup": pickup, "trace": log(s, "schedule", **pickup)}
+            approvals = [*approvals, "book_pickup"]
+        key = f"{run_id}:pickup"  # the same negotiation always uses the same key
+        try:
+            slots = calendar.propose_slots(MAX_SLOT_TRIES)
+            pickup = {"status": "no_slots"}
+            for start in slots:
+                result = calendar.book_slot(key, run_id, start)
+                if result["status"] in ("booked", "already_booked"):
+                    pickup = {"status": result["status"], "start_at": to_myt_iso(result["start_at"])}
+                    break
+                pickup = {"status": result["status"]}  # slot_taken or invalid: try the next
+        except CalendarError as error:
+            pickup = {"status": "error", "detail": str(error)[:200]}
+        return {"pickup": pickup, "approvals": approvals, "trace": log(s, "schedule", **pickup)}
+
     return {
         "plan": plan,
         "clarify": clarify,
@@ -348,6 +391,7 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False):
         "execute": execute,
         "ingest": ingest,
         "finalize": finalize,
+        "schedule": schedule,
     }
 
 

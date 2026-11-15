@@ -1,6 +1,8 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 
+from backend.app.core.calendar_rules import MYT, candidate_slots, validate_slot
 from backend.app.sim.seller import SellerReply, SimSeller
 
 
@@ -79,3 +81,47 @@ class ScriptedSellerPort:
     def send_message(self, message: str) -> str:
         self.sent.append((None, message))
         return self._next()
+
+
+class CalendarError(Exception):
+    """The calendar could not be reached or failed. The negotiation result is unaffected."""
+
+
+class InMemoryCalendar:
+    """Calendar for tests and offline runs. Same behaviour as the database one."""
+
+    def __init__(self, taken: list[datetime] | None = None):
+        self.taken: set[datetime] = set(taken or [])
+        self.by_key: dict[str, datetime] = {}
+
+    def propose_slots(self, count: int = 3, from_iso: str | None = None) -> list[str]:
+        now = datetime.fromisoformat(from_iso) if from_iso else datetime.now(MYT)
+        return [s.isoformat() for s in candidate_slots(now, self.taken, count)]
+
+    def book_slot(self, booking_key: str, thread_id: str, start_at: str) -> dict:
+        try:
+            start = datetime.fromisoformat(start_at)
+        except ValueError:
+            return {"status": "invalid", "detail": "start_at is not an ISO datetime"}
+        problem = validate_slot(start, datetime.now(MYT))
+        if problem:
+            return {"status": "invalid", "detail": problem}
+        if booking_key in self.by_key:
+            existing = self.by_key[booking_key]
+            return {
+                "status": "already_booked",
+                "start_at": existing.isoformat(),
+                "same_slot": existing == start,
+            }
+        if start in self.taken:
+            return {"status": "slot_taken"}
+        self.taken.add(start)
+        self.by_key[booking_key] = start
+        return {"status": "booked", "start_at": start.isoformat()}
+
+    def cancel_booking(self, booking_key: str) -> dict:
+        start = self.by_key.pop(booking_key, None)
+        if start is None:
+            return {"status": "not_found"}
+        self.taken.discard(start)
+        return {"status": "cancelled"}

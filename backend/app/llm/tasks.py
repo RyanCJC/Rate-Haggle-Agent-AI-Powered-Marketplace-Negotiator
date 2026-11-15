@@ -95,8 +95,10 @@ def facts_block(facts: list[dict]) -> list[str]:
     known = [f for f in facts if f["status"] != "missing"]
     unknown = [f["key"] for f in facts if f["status"] == "missing"]
     lines = [
-        "Known facts about the item. State nothing else about the item, and never invent "
-        "defects or specs to justify a lower price:"
+        (
+            "Known facts about the item. State nothing else about the item, and never invent "
+            "defects or specs to justify a lower price:"
+        )
     ]
     lines += [f"- {f['key']}: {f['value']} ({FACT_HINTS[f['status']]})" for f in known]
     if not known:

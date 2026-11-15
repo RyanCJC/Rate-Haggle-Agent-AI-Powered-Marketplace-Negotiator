@@ -1,3 +1,5 @@
+from langgraph.types import Command
+
 from backend.app.core.models import Violation
 
 from .builder import make_config
@@ -26,3 +28,16 @@ def edit_draft(graph, thread_id: str, new_text: str) -> list[Violation]:
         return violations
     graph.update_state(make_config(thread_id), {"draft": new_text}, as_node="validate")
     return []
+
+
+def waiting_for(graph, thread_id: str) -> dict | None:
+    """The question a paused run is asking (gate, price, draft), or None."""
+    for task in graph.get_state(make_config(thread_id)).tasks:
+        for item in task.interrupts:
+            return item.value
+    return None
+
+
+def decide(graph, thread_id: str, verdict: str):
+    """Answer the pause. Only the exact word "approve" goes ahead; anything else declines."""
+    return graph.invoke(Command(resume=verdict), config=make_config(thread_id))
