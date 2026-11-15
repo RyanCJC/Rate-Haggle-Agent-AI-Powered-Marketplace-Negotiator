@@ -158,8 +158,6 @@ def _bounded_clarify(runs):
                 worst = max(worst, steps)
         if worst > MAX_CLARIFY_STEPS:
             fails.append(f"{worst} clarify steps in one turn, limit is {MAX_CLARIFY_STEPS}")
-    if not any(price is None for r in runs for price, _ in r.port.sent):
-        fails.append("the evasive seller never prompted a question")
     return fails
 
 
@@ -211,7 +209,7 @@ SCENARIOS = [
     ),
     Scenario(
         "evasive_seller_bounded_clarify",
-        "Evasive seller: ask a few questions, then stop (max 2 questions, 4 steps per turn)",
+        "Evasive seller: never more than 2 questions and 4 tool steps per turn",
         "evasive", 1000, _bounded_clarify,
         exercised=lambda runs: _any_log(
             runs, lambda x: x.price is None and not x.walked_away
