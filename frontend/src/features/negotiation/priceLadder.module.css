@@ -1,0 +1,134 @@
+.ladder {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  height: 252px;
+  font-family: var(--font-sans);
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--color-line);
+  stroke-width: 1;
+}
+
+.axisY {
+  fill: var(--color-muted);
+  font: 600 var(--text-xs) / var(--text-xs-lh) var(--font-sans);
+  text-anchor: end;
+  dominant-baseline: central;
+}
+
+.axisX {
+  fill: var(--color-muted);
+  font: 600 var(--text-xs) / var(--text-xs-lh) var(--font-sans);
+  text-anchor: middle;
+  dominant-baseline: auto;
+}
+
+.sellerLine {
+  fill: none;
+  stroke: var(--color-warning-text);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.offerLine {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.offerDot {
+  fill: var(--color-primary);
+  vector-effect: non-scaling-stroke;
+}
+
+.dealDot {
+  fill: var(--color-gold);
+  vector-effect: non-scaling-stroke;
+}
+
+.askLine {
+  fill: none;
+  stroke: var(--color-gold);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.limitLine {
+  fill: none;
+  stroke: var(--color-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.label {
+  fill: var(--color-ink);
+  font: 600 var(--text-xs) / var(--text-xs-lh) var(--font-mono);
+  text-anchor: start;
+  dominant-baseline: central;
+}
+
+.referenceLabel {
+  fill: var(--color-muted);
+  font: 500 var(--text-xs) / var(--text-xs-lh) var(--font-sans);
+  text-anchor: end;
+  dominant-baseline: central;
+}
+
+.directLabel {
+  fill: var(--color-muted);
+  font: 500 var(--text-xs) / var(--text-xs-lh) var(--font-sans);
+  text-anchor: start;
+  dominant-baseline: auto;
+}
+
+.dealLabel {
+  fill: var(--color-ink);
+  font: 600 var(--text-xs) / var(--text-xs-lh) var(--font-mono);
+  text-anchor: middle;
+  dominant-baseline: auto;
+}
+
+.unit {
+  fill: var(--color-muted);
+  font: 500 var(--text-xs) / var(--text-xs-lh) var(--font-sans);
+  text-anchor: start;
+  dominant-baseline: hanging;
+}
+
+.drawing {
+  animation: drawIn var(--motion-base) var(--ease-out) forwards;
+}
+
+@keyframes drawIn {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.dataTable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}

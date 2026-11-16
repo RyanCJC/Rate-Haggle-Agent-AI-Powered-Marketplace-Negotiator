@@ -1,0 +1,28 @@
+.skeleton {
+  display: block;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-line) 60%, var(--color-surface));
+  overflow: hidden;
+  position: relative;
+}
+
+.skeleton::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-line) 40%, var(--color-surface)),
+    transparent
+  );
+  animation: shimmer var(--motion-base) ease-out infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(120%);
+  }
+}

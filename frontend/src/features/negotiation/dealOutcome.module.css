@@ -1,0 +1,71 @@
+.outcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-1);
+}
+
+.card {
+  flex: 1;
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-ink);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.receipt .title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.price {
+  margin: 0 0 var(--space-3) 0;
+}
+
+.priceNumber {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--color-gold);
+  line-height: 1.1;
+}
+
+.savings {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+}
+
+.perforation {
+  border: none;
+  border-top: 1px dotted var(--color-line);
+  margin: var(--space-4) 0;
+}
+
+.pickup,
+.approvals {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.errorDetail {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.copyButton {
+  margin: 0;
+}
+
+.continueButton {
+  width: 100%;
+}

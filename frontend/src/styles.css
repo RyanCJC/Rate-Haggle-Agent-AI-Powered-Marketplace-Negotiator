@@ -1,0 +1,50 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app__main {
+  flex: 1;
+  padding: var(--space-4);
+}
+
+.app__footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: var(--elev-1);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-lh);
+}
+
+.app__footer a {
+  color: var(--color-primary);
+}
+
+.section {
+  padding: var(--space-6) 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}

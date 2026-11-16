@@ -1,0 +1,121 @@
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-6) var(--space-4);
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.message {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.message .bubble {
+  margin-top: 2px;
+}
+
+.avatarAgent,
+.avatarSeller {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.avatarAgent {
+  background: var(--color-agent-tint);
+  color: var(--color-primary);
+}
+
+.avatarSeller {
+  background: var(--color-seller-tint);
+  color: var(--color-warning-text);
+}
+
+.bubble {
+  max-width: 70%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: var(--elev-1);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
+}
+
+.text {
+  margin: 0;
+  color: var(--color-ink);
+}
+
+.messageBuyer .bubble {
+  background: var(--color-agent-tint);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.messageSeller .bubble {
+  background: var(--color-seller-tint);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.typing {
+  display: flex;
+  gap: var(--space-1);
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-4);
+  align-items: center;
+}
+
+.typing span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  animation: blink var(--motion-base) infinite ease-in-out both;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 150ms;
+}
+.typing span:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message {
+    animation: none !important;
+  }
+  .typing span {
+    animation: none !important;
+    opacity: 1;
+  }
+}

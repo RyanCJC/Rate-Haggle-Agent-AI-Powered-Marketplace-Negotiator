@@ -1,0 +1,29 @@
+.boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-ink);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-ink);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.body {
+  margin: 0 0 var(--space-6) 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.reload {
+  width: auto;
+}

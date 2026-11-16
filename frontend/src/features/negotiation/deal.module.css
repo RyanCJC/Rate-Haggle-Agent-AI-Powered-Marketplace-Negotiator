@@ -1,0 +1,9 @@
+.deal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.placeholder {
+  margin-top: var(--space-1);
+}

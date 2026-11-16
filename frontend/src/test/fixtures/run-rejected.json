@@ -1,0 +1,344 @@
+{
+  "id": "rejected-leakthenfix",
+  "status": "finished",
+  "config": {
+    "asking": "1200",
+    "budget": "900",
+    "persona": "flexible",
+    "style": "balanced",
+    "autonomy": "approve_close",
+    "seed": 0
+  },
+  "error": null,
+  "question": null,
+  "outcome": "deal",
+  "final_price": "864",
+  "pickup": null,
+  "approvals": [],
+  "history": [
+    [
+      "buyer",
+      "How about RM 740?"
+    ],
+    [
+      "seller",
+      "Lowest I can go is RM 947."
+    ],
+    [
+      "buyer",
+      "How about RM 750?"
+    ],
+    [
+      "seller",
+      "Lowest I can go is RM 864."
+    ],
+    [
+      "buyer",
+      "How about RM 775?"
+    ],
+    [
+      "seller",
+      "I can do RM 864 at best."
+    ],
+    [
+      "buyer",
+      "How about RM 800?"
+    ],
+    [
+      "seller",
+      "Lowest I can go is RM 864."
+    ],
+    [
+      "buyer",
+      "How about RM 835?"
+    ],
+    [
+      "seller",
+      "How about RM 864? It is in great condition."
+    ],
+    [
+      "buyer",
+      "Okay, RM 864 works for me. Deal."
+    ]
+  ],
+  "our_offers": [
+    "740",
+    "750",
+    "775",
+    "800",
+    "835"
+  ],
+  "seller_prices": [
+    "1200",
+    "947",
+    "864",
+    "864",
+    "864",
+    "864"
+  ],
+  "trace": [
+    {
+      "node": "plan",
+      "kind": "offer",
+      "price": "740",
+      "reason": "round 0, target 742.05"
+    },
+    {
+      "node": "compose",
+      "attempt": 1
+    },
+    {
+      "node": "validate",
+      "ok": false,
+      "codes": [
+        "private_phrase",
+        "number_above_ceiling",
+        "price_not_stated"
+      ],
+      "rejected_draft": "My max budget is RM 900, so how about RM 700?"
+    },
+    {
+      "node": "compose",
+      "attempt": 2
+    },
+    {
+      "node": "validate",
+      "ok": true,
+      "codes": []
+    },
+    {
+      "node": "execute",
+      "action": "offer",
+      "price": "740"
+    },
+    {
+      "node": "ingest",
+      "intent": {
+        "price": "947",
+        "accepted": false,
+        "walked_away": false,
+        "asks_budget": false,
+        "pressure": false,
+        "terms_changed": false
+      }
+    },
+    {
+      "node": "plan",
+      "kind": "offer",
+      "price": "750",
+      "reason": "round 1, target 753.76"
+    },
+    {
+      "node": "compose",
+      "attempt": 1
+    },
+    {
+      "node": "validate",
+      "ok": false,
+      "codes": [
+        "private_phrase",
+        "number_above_ceiling",
+        "price_not_stated"
+      ],
+      "rejected_draft": "My max budget is RM 900, so how about RM 700?"
+    },
+    {
+      "node": "compose",
+      "attempt": 2
+    },
+    {
+      "node": "validate",
+      "ok": true,
+      "codes": []
+    },
+    {
+      "node": "execute",
+      "action": "offer",
+      "price": "750"
+    },
+    {
+      "node": "ingest",
+      "intent": {
+        "price": "864",
+        "accepted": false,
+        "walked_away": false,
+        "asks_budget": false,
+        "pressure": false,
+        "terms_changed": false
+      }
+    },
+    {
+      "node": "plan",
+      "kind": "offer",
+      "price": "775",
+      "reason": "round 2, target 775.18"
+    },
+    {
+      "node": "compose",
+      "attempt": 1
+    },
+    {
+      "node": "validate",
+      "ok": false,
+      "codes": [
+        "private_phrase",
+        "number_above_ceiling",
+        "price_not_stated"
+      ],
+      "rejected_draft": "My max budget is RM 900, so how about RM 700?"
+    },
+    {
+      "node": "compose",
+      "attempt": 2
+    },
+    {
+      "node": "validate",
+      "ok": true,
+      "codes": []
+    },
+    {
+      "node": "execute",
+      "action": "offer",
+      "price": "775"
+    },
+    {
+      "node": "ingest",
+      "intent": {
+        "price": "864",
+        "accepted": false,
+        "walked_away": false,
+        "asks_budget": false,
+        "pressure": false,
+        "terms_changed": false
+      }
+    },
+    {
+      "node": "plan",
+      "kind": "offer",
+      "price": "800",
+      "reason": "round 3, target 802.91"
+    },
+    {
+      "node": "compose",
+      "attempt": 1
+    },
+    {
+      "node": "validate",
+      "ok": false,
+      "codes": [
+        "private_phrase",
+        "number_above_ceiling",
+        "price_not_stated"
+      ],
+      "rejected_draft": "My max budget is RM 900, so how about RM 700?"
+    },
+    {
+      "node": "compose",
+      "attempt": 2
+    },
+    {
+      "node": "validate",
+      "ok": true,
+      "codes": []
+    },
+    {
+      "node": "execute",
+      "action": "offer",
+      "price": "800"
+    },
+    {
+      "node": "ingest",
+      "intent": {
+        "price": "864",
+        "accepted": false,
+        "walked_away": false,
+        "asks_budget": false,
+        "pressure": false,
+        "terms_changed": false
+      }
+    },
+    {
+      "node": "plan",
+      "kind": "offer",
+      "price": "835",
+      "reason": "round 4, target 835.75"
+    },
+    {
+      "node": "compose",
+      "attempt": 1
+    },
+    {
+      "node": "validate",
+      "ok": false,
+      "codes": [
+        "private_phrase",
+        "number_above_ceiling",
+        "price_not_stated"
+      ],
+      "rejected_draft": "My max budget is RM 900, so how about RM 700?"
+    },
+    {
+      "node": "compose",
+      "attempt": 2
+    },
+    {
+      "node": "validate",
+      "ok": true,
+      "codes": []
+    },
+    {
+      "node": "execute",
+      "action": "offer",
+      "price": "835"
+    },
+    {
+      "node": "ingest",
+      "intent": {
+        "price": "864",
+        "accepted": false,
+        "walked_away": false,
+        "asks_budget": false,
+        "pressure": false,
+        "terms_changed": false
+      }
+    },
+    {
+      "node": "plan",
+      "kind": "accept",
+      "price": "864",
+      "reason": "seller 864 <= target 873.00"
+    },
+    {
+      "node": "compose",
+      "attempt": 1
+    },
+    {
+      "node": "validate",
+      "ok": false,
+      "codes": [
+        "private_phrase",
+        "number_above_ceiling",
+        "price_not_stated"
+      ],
+      "rejected_draft": "My max budget is RM 900, so how about RM 700?"
+    },
+    {
+      "node": "compose",
+      "attempt": 2
+    },
+    {
+      "node": "validate",
+      "ok": true,
+      "codes": []
+    },
+    {
+      "node": "execute",
+      "action": "accept",
+      "price": "864"
+    },
+    {
+      "node": "finalize",
+      "outcome": "deal"
+    }
+  ]
+}

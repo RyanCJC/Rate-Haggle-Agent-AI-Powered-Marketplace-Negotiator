@@ -1,0 +1,110 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+  text-decoration: none;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.sizeSm {
+  padding: 6px 10px;
+  font-size: var(--text-xs);
+}
+
+.sizeMd {
+  padding: 10px 16px;
+  font-size: var(--text-sm);
+}
+
+.buttonPressed {
+  background: color-mix(in srgb, var(--color-primary) 85%, var(--color-surface));
+  border-color: var(--color-primary);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.buttonPrimary {
+  background: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.buttonSecondary {
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  border-color: var(--color-line);
+}
+
+.buttonSecondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface-2) 92%, var(--color-line));
+}
+
+.buttonGhost {
+  background: transparent;
+  color: var(--color-ink);
+  border-color: transparent;
+}
+
+.buttonGhost:hover:not(:disabled) {
+  background: var(--color-surface-2);
+}
+
+.buttonDanger {
+  background: var(--color-danger);
+  color: #ffffff;
+  border-color: var(--color-danger);
+}
+
+.buttonDanger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.buttonLoading {
+  pointer-events: none;
+}
+
+.spinner {
+  display: inline-block;
+  animation: spin var(--motion-base) linear infinite;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

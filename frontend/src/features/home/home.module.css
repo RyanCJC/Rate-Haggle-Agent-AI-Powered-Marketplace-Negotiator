@@ -1,0 +1,339 @@
+.home {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-4);
+}
+
+.heading {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--space-2) 0;
+}
+
+.intro {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin: var(--space-8) 0 var(--space-3) 0;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.input {
+  font: inherit;
+  padding: 10px 12px;
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-base);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.inputError {
+  border-color: var(--color-danger);
+}
+
+.fieldError {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
+}
+
+.note {
+  color: var(--color-warning-text);
+  font-size: var(--text-sm);
+  background: var(--color-warning-bg);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+}
+
+.who {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.personas {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+
+.personaCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+
+.personaCard:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.personaCard:hover {
+  border-color: var(--color-primary);
+}
+
+.personaSelected {
+  border-color: var(--color-primary);
+  background: var(--color-agent-tint);
+}
+
+.personaLabel {
+  font-weight: 700;
+}
+
+.personaHint {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.styleChoices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+.controlChoices {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+
+.radioCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+
+.radioCard:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.radioCard:hover {
+  border-color: var(--color-primary);
+}
+
+.radioCard input {
+  appearance: none;
+  width: var(--space-5);
+  height: var(--space-5);
+  border: var(--elev-1);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+
+.radioCard input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.radioCard input:checked {
+  border-color: var(--color-primary);
+  background: var(--color-agent-tint);
+}
+
+.radioCard input:checked::after {
+  content: "";
+  display: block;
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: 50%;
+  background: var(--color-primary);
+  margin: var(--space-1) 0 0 var(--space-1);
+}
+
+.radioCardSelected {
+  border-color: var(--color-primary);
+  background: var(--color-agent-tint);
+}
+
+.hint {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  display: block;
+  margin-top: var(--space-1);
+}
+
+.error {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+  margin: var(--space-3) 0 0 0;
+}
+
+.startButton {
+  margin-top: var(--space-4);
+}
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.asideTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin: var(--space-8) 0 var(--space-3) 0;
+}
+
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.timeline li {
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  padding: var(--space-2) 0;
+  border-bottom: var(--elev-1);
+}
+
+.timeline li:last-child {
+  border-bottom: none;
+}
+
+.guardrails {
+  background: var(--color-surface-2);
+}
+
+.guardrailsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.guardrailsList li {
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  padding: var(--space-2) 0;
+}
+
+.recents {
+  grid-column: 1 / -1;
+}
+
+.recentsTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  margin: var(--space-8) 0 var(--space-3) 0;
+}
+
+.recentsEmpty {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.recentsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.recentsItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  padding: var(--space-2) var(--space-3);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.recentsId {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.recentsAsking {
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.recentsTime {
+  margin-left: auto;
+  color: var(--color-muted);
+}
+
+@media (min-width: 1024px) {
+  .home {
+    grid-template-columns: 1.35fr 1fr;
+    align-items: start;
+  }
+  .personas {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
