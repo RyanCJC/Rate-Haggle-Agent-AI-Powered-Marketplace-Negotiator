@@ -1,0 +1,52 @@
+# Copilot mode
+
+Copilot mode helps a buyer negotiate with a real seller on another app. Haggle drafts each buyer
+message; the user reviews it, copies it, sends it themselves, and pastes the seller's reply back.
+Runs persist across reloads, so the user can leave and return later.
+
+## Listing facts
+
+When starting a Copilot run, the user may choose a category and paste listing text. Haggle extracts
+recognized item details from that text and from seller replies. The **Item** tab shows each fact's
+value, status, source, and available evidence. A fact is marked confirmed when sources agree, stated
+once when one source supports it, sources disagree when sources conflict, and unknown when it is
+absent.
+
+With no listing text, the facts are unknown; the agent is instructed not to state item details and
+to ask instead. With listing text, its draft is grounded against the listing and seller-chat facts.
+The user's own edits are not checked against item facts; they still go through the existing price and
+limit validation.
+
+Fact extraction and claim checking cover the supported fact keys and recognized wording. They are
+not a general guarantee that every possible item statement will be recognized or checked.
+
+## Market check
+
+The user may enter up to eight comparable prices, separated by whitespace or semicolons; a
+thousands-grouped comma such as `1,200` is accepted. When at least two valid prices are entered,
+Haggle shows their median and the asking price and limit as percentages above or below that median.
+This is informational only: comparable prices are not looked up and are not used by the agent's
+negotiation strategy.
+
+## Flow
+
+1. Choose Copilot, set the asking price and limit, and optionally enter a category, listing text,
+   comparable prices, item title, and the seller's first message.
+2. Read or edit the generated draft, copy it, then send it to the seller yourself.
+3. Paste the seller's answer and submit it to Haggle.
+4. Repeat while the agent plans and drafts each next message.
+5. Review and approve the close gate.
+6. Copy the final buyer message, send it to the seller, and agree on a pickup time yourself.
+
+## Limits
+
+- There is no marketplace integration: the human is the transport.
+- Seller text is untrusted input.
+- The fact checker recognizes a defined set of item-fact keys and wording; it is not an exhaustive
+  natural-language verifier.
+- Comparable prices are supplied by the user. Haggle does not look them up and does not use them
+  when choosing offers.
+- User edits are checked for price and limit rules, not item-fact grounding.
+- Pickup coordination and booking are not implemented in Copilot mode.
+- The desktop-light E2E suite uses the offline demo model (`HAGGLE_LLM` is not set to `live`).
+  Live-model wording and offer sequences are not covered by these deterministic tests.

@@ -12,6 +12,8 @@ from backend.app.graph.control import (
     question_of,
     waiting_for,
 )
+from backend.app.graph.manual import ManualSellerPort
+from backend.app.graph.nodes import check_draft, context, decision_of
 from backend.app.graph.ports import SimSellerPort
 from backend.app.llm.fake import RuleBasedLLM
 from backend.app.sim.personas import get_persona
@@ -25,6 +27,27 @@ class NotFound(Exception):
 class Conflict(Exception):
     """The request is valid but not possible right now."""
 
+
+class Rejected(Exception):
+    """The request was refused by the message rules; `messages` says why."""
+
+    def __init__(self, messages: list[str]):
+        super().__init__("; ".join(messages))
+        self.messages = messages
+
+
+def listing_of(config: dict) -> tuple[dict | None, list[Decimal] | None]:
+    """What the graph is told about the item. Copilot always gets a listing, even an empty one:
+    then every item detail is unknown, so the agent states none."""
+    if config.get("mode", "simulate") != "copilot":
+        return None, None
+    listing = {
+        "title": config.get("item_title") or "",
+        "description": config.get("listing_text") or "",
+        "category": config.get("category") or "",
+    }
+    comparables = [Decimal(c) for c in config.get("comparables") or []] or None
+    return listing, comparables
 
 class Service:
     """Runs negotiations in the background. All state lives in the checkpointer and the
@@ -54,13 +77,31 @@ class Service:
         config = self._config(run_id)
         self._reserve(run_id)
         try:
-            graph = self._graph(config, None)
-            if not pending(graph, run_id) or waiting_for(graph, run_id) is None:
+            question = waiting_for(self._graph(config, None), run_id)
+            if question is None:
                 raise Conflict("nothing is waiting for approval")
+            if question.get("gate") == "seller_reply":
+                raise Conflict("the agent is waiting for the seller's reply: use /reply")
         except Exception:
             self._release(run_id)
             raise
         self._pool.submit(self._drive, run_id, "decide", verdict)
+
+    def reply_run(self, run_id: str, reply: str, sent_text: str | None) -> None:
+        """Copilot: the human pasted the seller's reply (and maybe edited what they sent)."""
+        state = self._reserve_for_reply(run_id)
+        if sent_text:
+            problems = check_draft(decision_of(state.values), sent_text, context(state.values))
+            if problems:
+                self._release(run_id)
+                raise Rejected([p.public_message for p in problems])
+        payload = {"action": "reply", "reply": reply, "sent_text": sent_text}
+        self._pool.submit(self._drive, run_id, "reply", payload)
+
+    def stop_run(self, run_id: str) -> None:
+        """Copilot: the human ends the negotiation instead of relaying a reply."""
+        self._reserve_for_reply(run_id)
+        self._pool.submit(self._drive, run_id, "stop", {"action": "stop"})
 
     def resume_run(self, run_id: str) -> None:
         config = self._config(run_id)
@@ -111,6 +152,7 @@ class Service:
             "our_offers": [str(p) for p in values.get("our_offers", [])],
             "seller_prices": [str(p) for p in values.get("seller_prices", [])],
             "trace": values.get("trace", []),
+             "facts": values.get("facts", []),
         }
 
     # -- internals --------------------------------------------------------------------------
@@ -122,12 +164,14 @@ class Service:
         return config
 
     def _graph(self, config: dict, port):
+        simulate = config.get("mode", "simulate") == "simulate"
         return build_graph(
             self.llm,
             port,
             checkpointer=self.saver,
             approve_close=config["autonomy"] == "approve_close",
-            calendar=self.calendar,
+            calendar=self.calendar if simulate else None,  # copilot never books anything
+            ground=not simulate,  # copilot states only what the listing or seller said
         )
 
     def _reserve(self, run_id: str) -> None:
@@ -144,16 +188,38 @@ class Service:
         with self._guard:
             return self._locks.setdefault(run_id, threading.Lock())
 
-    def _drive(self, run_id: str, mode: str, verdict: str | None) -> None:
+    def _reserve_for_reply(self, run_id: str):
+        """Reserve the run and return its stored state. Only a copilot run that is waiting at a
+        seller_reply question qualifies."""
+        config = self._config(run_id)
+        if config.get("mode", "simulate") != "copilot":
+            raise Conflict("this negotiation is not in copilot mode")
+        self._reserve(run_id)
+        try:
+            state = self._graph(config, None).get_state(make_config(run_id))
+            question = question_of(state)
+            if not question or question.get("gate") != "seller_reply":
+                raise Conflict("the agent is not waiting for a seller reply")
+        except Exception:
+            self._release(run_id)
+            raise
+        return state
+
+    def _drive(self, run_id: str, mode: str, payload) -> None:
         """Run the graph until it pauses or finishes. The one path for every command."""
         try:
             with self._lock(run_id):
                 config = self.runs.get(run_id)
                 asking, budget = Decimal(config["asking"]), Decimal(config["budget"])
-                persona, seed = get_persona(config["persona"]), config["seed"]
+                copilot = config.get("mode", "simulate") == "copilot"
                 if mode == "start":
-                    port = SimSellerPort(SimSeller(asking, persona, seed=seed))
+                    if copilot:
+                        port = ManualSellerPort(config.get("seller_opening"))
+                    else:
+                        persona = get_persona(config["persona"])
+                        port = SimSellerPort(SimSeller(asking, persona, seed=config["seed"]))
                     graph = self._graph(config, port)
+                    listing, comparables = listing_of(config)
                     run_graph(
                         graph,
                         asking,
@@ -161,14 +227,20 @@ class Service:
                         style=config["style"],
                         opening_text=port.opening_text(),
                         thread_id=run_id,
+                        listing=listing,
+                        comparables=comparables,
                     )
                     return
-                # A restart-safe path: rebuild the seller from the offers in the checkpoint.
-                offers = current_state(self._graph(config, None), run_id)["our_offers"]
-                port = SimSellerPort.restore(asking, persona, seed, offers, with_opening=True)
+                if copilot:
+                    port = ManualSellerPort()  # nothing to rebuild: the checkpoint holds it all
+                else:
+                    # A restart-safe path: rebuild the seller from the offers in the checkpoint.
+                    persona, seed = get_persona(config["persona"]), config["seed"]
+                    offers = current_state(self._graph(config, None), run_id)["our_offers"]
+                    port = SimSellerPort.restore(asking, persona, seed, offers, with_opening=True)
                 graph = self._graph(config, port)
-                if mode == "decide":
-                    decide(graph, run_id, verdict)
+                if mode in ("decide", "reply", "stop"):
+                    decide(graph, run_id, payload)
                 else:
                     approve(graph, run_id)
         except Exception as error:  # noqa: BLE001 - a failed run is reported, never lost

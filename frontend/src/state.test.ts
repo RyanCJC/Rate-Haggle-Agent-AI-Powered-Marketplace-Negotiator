@@ -4,9 +4,11 @@ import {
   formatPickup,
   formatRm,
   gateTitle,
+  getComposerState,
   outcomeLabel,
   pickupLine,
   savings,
+  statusChipLabel,
   stepLabel,
 } from "./state";
 
@@ -50,6 +52,32 @@ describe("labels", () => {
     expect(gateTitle({ gate: "book_pickup", price: "925" })).toBe(
       "Book the pickup for the RM 925 deal?",
     );
+    expect(gateTitle({ gate: "seller_reply", kind: "offer", price: "880", draft: "hello" })).toBe(
+      "Waiting for your reply: RM 880",
+    );
+  });
+
+  it("derives chip labels at the seller and close gates", () => {
+    expect(statusChipLabel({ gate: "seller_reply", kind: "offer", price: "990", draft: "ok" })).toBe(
+      "Waiting for your reply",
+    );
+    expect(statusChipLabel({ gate: "close_deal", price: "880" }, "running")).toBe("Waiting for approval");
+    expect(statusChipLabel(null, "running")).toBe("Running");
+    expect(statusChipLabel(null, "waiting_for_approval")).toBe("Waiting for approval");
+  });
+});
+
+describe("getComposerState", () => {
+  it("classifies seller-reply and close-approval gates before status", () => {
+    expect(getComposerState({ status: "running", question: { gate: "seller_reply", kind: "offer", price: "990", draft: "hey" }, outcome: null })).toBe("waiting_for_reply");
+    expect(getComposerState({ status: "waiting_for_approval", question: { gate: "close_deal", price: "880" }, outcome: null })).toBe("waiting_for_close_approval");
+  });
+
+  it("classifies busy, finished, and stopped snapshots", () => {
+    expect(getComposerState({ status: "running", question: null, outcome: null })).toBe("busy");
+    expect(getComposerState({ status: "running", question: null, outcome: "user_stopped" })).toBe("stopped");
+    expect(getComposerState({ status: "finished", question: null, outcome: "deal" })).toBe("finished");
+    expect(getComposerState({ status: "failed", question: null, outcome: null })).toBe("finished");
   });
 });
 

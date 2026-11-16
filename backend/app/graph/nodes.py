@@ -25,7 +25,7 @@ from backend.app.llm.facts import propose_claims, verify_claims
 from backend.app.llm.guards import reconcile_intent
 from backend.app.llm.tasks import compose_message, extract_seller_intent, fmt_price
 
-from .ports import CalendarError, SellerClosed
+from .ports import CalendarError, HumanStopped, SellerClosed
 from .state import NegState
 
 MAX_RETRIES = 2
@@ -102,6 +102,13 @@ def check_draft(
                 code="price_not_stated",
                 public_message="State the exact price in the message.",
                 private_detail=f"missing {decision.price}",
+            )
+        )
+    if "seller_message" in draft.lower():
+        violations.append(
+            Violation(
+                code="markup_echo",
+                public_message="Do not include tags or markup in the message.",
             )
         )
     if facts:
@@ -233,10 +240,10 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None,
         facts = s.get("facts") if ground and s.get("facts") else None
         violations = check_draft(decision_of(s), s["draft"], context(s), facts)
         ok = not violations
-        update = {
-            "validation_ok": ok,
-            "trace": log(s, "validate", ok=ok, codes=[v.code for v in violations]),
-        }
+        entry: dict = {"ok": ok, "codes": [v.code for v in violations]}
+        if not ok:
+            entry["rejected_draft"] = (s["draft"] or "")[:300]  # shown in the activity panel
+        update = {"validation_ok": ok, "trace": log(s, "validate", **entry)}
         if not ok:
             update["retries"] = s["retries"] + 1
             update["feedback"] = " ".join(v.public_message for v in violations)
@@ -288,11 +295,23 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None,
                 "outcome": "extraction_miss",
                 "trace": log(s, "execute", action=decision.kind, error="seller already closed"),
             }
+        except HumanStopped:
+            return {
+                "outcome": "user_stopped",
+                "trace": log(s, "execute", action=decision.kind, stopped=True),
+            }
+        entry: dict = {"action": decision.kind, "price": price_text}
+        if hasattr(seller, "sent_text"):  # copilot: the human relayed this message
+            entry["relayed"] = True
+            sent = seller.sent_text
+            if sent:
+                history = [*s["history"], ("buyer", sent)]  # record what was really sent
+                entry["edited"] = True
         update = {
             "history": [*history, ("seller", text)],
             "seller_text": text,
             "turns": [*s["turns"], decision.price],
-            "trace": log(s, "execute", action=decision.kind, price=price_text),
+            "trace": log(s, "execute", **entry),
         }
         if decision.kind == "offer":
             update["our_offers"] = [*s["our_offers"], decision.price]

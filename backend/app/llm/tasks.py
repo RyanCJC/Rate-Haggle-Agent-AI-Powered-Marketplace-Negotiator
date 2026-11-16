@@ -7,6 +7,7 @@ from backend.app.core.models import NegotiationContext
 from backend.app.core.strategy import StrategyDecision
 
 from .client import LLMClient
+from .untrusted import UNTRUSTED_NOTE, wrap_untrusted, wrap_untrusted_inline
 
 
 class SellerIntent(BaseModel):
@@ -41,6 +42,8 @@ accepted false.
 Buyer's last offer RM 880, seller says "Okay deal, RM 880 lah." -> price 880, accepted true.
 Seller says "Takpe lah, saya jual orang lain." -> price null, walked_away true."""
 
+EXTRACT_SYSTEM = f"{EXTRACT_SYSTEM}\n\n{UNTRUSTED_NOTE}"
+
 COMPOSE_SYSTEM = """You write short messages for a BUYER negotiating to buy a second-hand item \
 from a seller on a marketplace.
 Rules:
@@ -55,6 +58,8 @@ light Malay-English, otherwise use English.
 - Never say an offer is final, your best, or the most you can do, and never say you can \
 stretch or go higher.
 - Greet only in your first message. Do not start later messages with a greeting."""
+
+COMPOSE_SYSTEM = f"{COMPOSE_SYSTEM}\n\n{UNTRUSTED_NOTE}"
 
 STYLE_HINTS = {
     "aggressive": "Style: confident and brisk. Do not sound eager.",
@@ -78,7 +83,7 @@ def extract_seller_intent(
 ) -> SellerIntent:
     prefix = f"Buyer's last offer: RM {fmt_price(buyer_offer)}\n" if buyer_offer is not None else ""
     return llm.complete_json(
-        EXTRACT_SYSTEM, f"{prefix}Seller message:\n{seller_text}", SellerIntent, task="extract"
+        EXTRACT_SYSTEM, f"{prefix}Seller message:\n{wrap_untrusted(seller_text)}", SellerIntent, task="extract"
     )
 
 FACT_HINTS = {
@@ -100,7 +105,10 @@ def facts_block(facts: list[dict]) -> list[str]:
             "defects or specs to justify a lower price:"
         )
     ]
-    lines += [f"- {f['key']}: {f['value']} ({FACT_HINTS[f['status']]})" for f in known]
+    lines += [
+        f"- {f['key']}: {wrap_untrusted_inline(f['value'])} ({FACT_HINTS[f['status']]})"
+        for f in known
+    ]
     if not known:
         lines.append("- none")
     if unknown:
@@ -129,7 +137,10 @@ def build_compose_prompt(
     if facts:
         lines.extend(facts_block(facts))
     lines.append("Recent conversation:")
-    lines.extend(f"{role}: {text}" for role, text in history[-4:])
+    lines.extend(
+        f"{role}: {wrap_untrusted_inline(text) if role == 'seller' else text}"
+        for role, text in history[-4:]
+    )
     if feedback:
         lines.append(f"Your previous draft was rejected: {feedback} Fix it.")
     lines.append("Write the next buyer message.")

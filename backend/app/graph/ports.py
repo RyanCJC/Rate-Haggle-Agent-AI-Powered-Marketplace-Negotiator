@@ -125,3 +125,7 @@ class InMemoryCalendar:
             return {"status": "not_found"}
         self.taken.discard(start)
         return {"status": "cancelled"}
+    
+
+class HumanStopped(Exception):
+    """The human ended the negotiation instead of relaying a seller reply."""

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from backend.app.knowledge.facts import Claim
 
 from .client import LLMClient
+from .untrusted import UNTRUSTED_NOTE, wrap_untrusted
 
 
 class FactProposal(BaseModel):
@@ -26,9 +27,12 @@ Rules:
 - Do not guess or infer. Ignore prices, meeting places and anything not about the item.
 - If the message makes no claims about the item, return {"facts": []}."""
 
+FACTS_SYSTEM = f"{FACTS_SYSTEM}\n\n{UNTRUSTED_NOTE}"
+MAX_VALUE_CHARS = 60
 
 def build_facts_prompt(text: str, allowed_keys: tuple[str, ...]) -> tuple[str, str]:
-    return FACTS_SYSTEM, f"Seller message: {text}\nAllowed keys: {', '.join(allowed_keys)}"
+    user = f"Seller message:\n{wrap_untrusted(text)}\nAllowed keys: {', '.join(allowed_keys)}"
+    return FACTS_SYSTEM, user
 
 
 def propose_claims(llm: LLMClient, text: str, allowed_keys: tuple[str, ...]) -> list[FactProposal]:
@@ -55,10 +59,14 @@ def verify_claims(
         quote = _squash(p.quote)
         if p.key not in allowed_keys:
             dropped.append(f"key not allowed: {p.key}")
+        elif len(p.value) > MAX_VALUE_CHARS or "\n" in p.value or "\r" in p.value:
+            dropped.append(f"value too long or multi-line: {p.key}")
         elif not p.value.strip() or len(quote) < 3:
             dropped.append(f"empty value or quote: {p.key}")
         elif quote not in haystack:
             dropped.append(f"quote not in the message: {p.quote!r}")
+        elif _squash(p.value) not in quote:
+            dropped.append(f"value not in the quote: {p.key}={p.value!r}")
         elif not _numbers(p.value) <= _numbers(p.quote):
             dropped.append(f"number in value not in quote: {p.key}={p.value!r}")
         else:

@@ -1,4 +1,4 @@
-import type { Pickup, Question, Status, TraceEntry } from "./types";
+import type { Pickup, Question, Snapshot, Status, TraceEntry } from "./types";
 
 export interface TraceItem {
   id: number;
@@ -14,6 +14,15 @@ export const STATUS_LABEL: Record<Status, string> = {
   lost: "Not found",
 };
 
+const STATUS_CHIP_LABEL: Record<Status, string> = {
+  running: "Running",
+  waiting_for_approval: "Waiting for approval",
+  finished: "Finished",
+  failed: "Failed",
+  stalled: "Stalled",
+  lost: "Lost",
+};
+
 const OUTCOMES: Record<string, string> = {
   deal: "Deal agreed",
   we_walk: "The agent walked away",
@@ -21,6 +30,7 @@ const OUTCOMES: Record<string, string> = {
   extraction_miss: "The conversation broke down",
   timeout: "No agreement in time",
   user_declined: "You declined the deal",
+  user_stopped: "You ended the negotiation",
 };
 
 const STEPS: Record<string, string> = {
@@ -98,10 +108,39 @@ export function pickupLine(pickup: Pickup | null): string | null {
 
 export function gateTitle(question: Question): string {
   const price = formatRm(question.price);
-  return question.gate === "close_deal"
-    ? `Accept ${price}?`
-    : `Book the pickup for the ${price} deal?`;
+  if (question.gate === "seller_reply") {
+    return `Waiting for your reply${question.price ? `: ${price}` : ""}`;
+  }
+  if (question.gate === "close_deal") {
+    return `Accept ${price}?`;
+  }
+  return `Book the pickup for the ${price} deal?`;
 }
+
+export function statusChipLabel(question: Question | null, status: Status = "running"): string {
+  if (question?.gate === "seller_reply") return "Waiting for your reply";
+  if (question?.gate === "close_deal") return "Waiting for approval";
+  return STATUS_CHIP_LABEL[status] ?? "Running";
+}
+
+export const statusLabel = statusChipLabel;
+
+export type ComposerState =
+  | "waiting_for_reply"
+  | "waiting_for_close_approval"
+  | "busy"
+  | "finished"
+  | "stopped";
+
+export function getComposerState(snapshot: Pick<Snapshot, "status" | "question" | "outcome">): ComposerState {
+  if (snapshot.question?.gate === "seller_reply") return "waiting_for_reply";
+  if (snapshot.question?.gate === "close_deal") return "waiting_for_close_approval";
+  if (snapshot.outcome === "user_stopped") return "stopped";
+  return snapshot.status === "running" ? "busy" : "finished";
+}
+
+export const composerState = getComposerState;
+export const composerStatus = getComposerState;
 
 /** Add a trace entry unless it is a replay: ids only ever go up. */
 export function appendTrace(list: TraceItem[], id: number, entry: TraceEntry): TraceItem[] {

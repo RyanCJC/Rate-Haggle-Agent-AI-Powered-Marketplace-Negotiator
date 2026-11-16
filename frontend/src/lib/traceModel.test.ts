@@ -107,4 +107,49 @@ describe("buildTimeline", () => {
       }
     }
   });
+
+  it("derives the pending-message step from the snapshot question", () => {
+    const model = buildTimeline(
+      [{ node: "plan", kind: "offer", price: "900", reason: "counter" }],
+      { gate: "seller_reply", kind: "offer", price: "900", draft: "Would RM 900 work?" },
+      true,
+    );
+    expect(model.pending?.label).toBe("Waiting for you to send the message");
+    expect(model.terminal.some((step) => step.node === "schedule")).toBe(false);
+  });
+
+  it("omits pickup scheduling from Copilot timelines", () => {
+    const model = buildTimeline(
+      [
+        { node: "plan", kind: "offer", price: "900", reason: "counter" },
+        { node: "schedule", status: "booked", start_at: "2025-01-01T10:00:00Z" },
+      ],
+      null,
+      true,
+    );
+    expect(model.terminal.some((step) => step.node === "schedule")).toBe(false);
+    expect(model.terminal.map((step) => step.label)).not.toContain("Book pickup");
+  });
+
+  it("labels relayed and edited Copilot messages as sent by the user", () => {
+    const model = buildTimeline([
+      { node: "plan", kind: "offer", price: "900", reason: "counter" },
+      { node: "execute", action: "offer", price: "900", relayed: true },
+      { node: "plan", kind: "offer", price: "920", reason: "counter" },
+      { node: "execute", action: "offer", price: "920", relayed: true, edited: true },
+    ]);
+    const labels = model.turns.flatMap((turn) => turn.steps.map((step) => step.label));
+    expect(labels.filter((label) => label === "You sent this to the seller")).toHaveLength(2);
+    const executeSteps = model.turns.flatMap((turn) =>
+      turn.steps.filter((step) => step.node === "execute"),
+    );
+    expect(executeSteps[0].execute?.edited).toBe(false);
+    expect(executeSteps[1].execute?.edited).toBe(true);
+  });
+
+  it("maps ungrounded claims to the listing-and-chat explanation", () => {
+    expect(violationReason("ungrounded_claim")).toBe(
+      "Blocked: the draft stated an item detail that is not in the listing or the chat.",
+    );
+  });
 });

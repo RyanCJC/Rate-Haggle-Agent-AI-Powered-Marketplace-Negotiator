@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { decide } from "../../api";
 import { SummaryStrip } from "./SummaryStrip";
 import { Conversation } from "./Conversation";
@@ -10,13 +10,28 @@ import { Skeleton } from "../../ui/skeleton/skeleton";
 import { Button } from "../../ui/button/button";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { NotFoundScreen } from "./NotFoundScreen";
+import { CopilotComposer } from "./CopilotComposer";
+import { CopilotItemPanel } from "../listing/CopilotItemPanel";
 import { useNegotiation } from "../../useNegotiation";
+import type { Mode } from "../../types";
 import styles from "./workspace.module.css";
 
-export function Workspace({ runId, onHome: _onHome }: { runId: string; onHome: () => void }) {
+export function Workspace({
+  runId,
+  onHome: _onHome,
+  onModeChange,
+}: {
+  runId: string;
+  onHome: () => void;
+  onModeChange: (mode: Mode | null) => void;
+}) {
   const { snapshot, trace, error, connection, reopen } = useNegotiation(runId);
   const [approving, setApproving] = useState(false);
   const [declining, setDeclining] = useState(false);
+
+  useEffect(() => {
+    onModeChange(snapshot?.config.mode ?? null);
+  }, [onModeChange, snapshot?.config.mode]);
 
   const notFound = !snapshot && error != null && /unknown/i.test(error);
   const onHome = useCallback(() => {
@@ -73,24 +88,53 @@ export function Workspace({ runId, onHome: _onHome }: { runId: string; onHome: (
 
   const question = snapshot.question ?? null;
   const waitingForApproval = snapshot.status === "waiting_for_approval" && !!question;
+  const showCloseGate = waitingForApproval && question?.gate === "close_deal";
+  const showSellerReplyGate = waitingForApproval && question?.gate === "seller_reply";
+  const isCopilot = snapshot.config.mode === "copilot";
+  const pendingDraft =
+    isCopilot &&
+    showSellerReplyGate &&
+    question?.gate === "seller_reply" &&
+    snapshot.outcome !== "user_stopped" &&
+    snapshot.status !== "finished"
+      ? question.draft
+      : null;
+  const finalMessage =
+    isCopilot && snapshot.status === "finished" && snapshot.outcome === "deal"
+      ? [...snapshot.history].reverse().find(([role]) => role === "buyer")?.[1] ?? null
+      : null;
 
   return (
     <ErrorBoundary>
       <div className={styles.workspace}>
         <SummaryStrip snapshot={snapshot} />
 
-        {waitingForApproval && question && (
+        {showCloseGate && question && (
           <ApprovalPanel
             question={question}
             onApprove={handleApprove}
             onDecline={handleDecline}
             inFlight={approving || declining}
+            copilot={isCopilot}
           />
         )}
 
+        {finalMessage && <FinalMessagePanel message={finalMessage} />}
+
         <div className={styles.split}>
-          <div className={styles.conversationCol}>
-            <Conversation history={snapshot.history} typing={snapshot.status === "running"} />
+          <div className={[styles.conversationCol, isCopilot && styles.conversationColCopilot].filter(Boolean).join(" ")}>
+            <Conversation
+              history={snapshot.history}
+              typing={snapshot.status === "running"}
+              pendingDraft={pendingDraft}
+              copilot={isCopilot}
+            />
+            {isCopilot && (
+              <CopilotComposer
+                runId={runId}
+                question={question?.gate === "seller_reply" ? question : null}
+              />
+            )}
           </div>
           <div className={styles.sideCol}>
             <Tabs
@@ -98,7 +142,13 @@ export function Workspace({ runId, onHome: _onHome }: { runId: string; onHome: (
                 {
                   id: "activity",
                   label: "Activity",
-                  panel: <ActivityPanel trace={trace.map((item) => item.entry)} connection={connection} />,
+                  panel: (
+                    <ActivityPanel
+                      trace={trace.map((item) => item.entry)}
+                      connection={connection}
+                      snapshot={snapshot}
+                    />
+                  ),
                 },
                 {
                   id: "deal",
@@ -112,11 +162,49 @@ export function Workspace({ runId, onHome: _onHome }: { runId: string; onHome: (
                     />
                   ),
                 },
+                ...(isCopilot
+                  ? [{
+                      id: "item",
+                      label: "Item",
+                      panel: <CopilotItemPanel snapshot={snapshot} />,
+                    }]
+                  : []),
               ]}
             />
           </div>
         </div>
       </div>
     </ErrorBoundary>
+  );
+}
+
+function FinalMessagePanel({ message }: { message: string }) {
+  const [notice, setNotice] = useState("");
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(message);
+      setNotice("Copied");
+    } catch {
+      const field = document.getElementById("copilot-final-message");
+      if (field instanceof HTMLTextAreaElement) {
+        field.focus();
+        field.select();
+      }
+      setNotice("Press Ctrl+C to copy");
+    }
+  };
+
+  return (
+    <section className={styles.finalMessage} aria-labelledby="final-message-title" data-testid="copilot-final-message-panel">
+      <h2 id="final-message-title">Send this to the seller</h2>
+      <label className={styles.srOnly} htmlFor="copilot-final-message">Final message</label>
+      <textarea id="copilot-final-message" readOnly value={message} rows={3} />
+      <Button type="button" variant="secondary" onClick={() => void copy()} data-testid="copilot-final-copy">
+        Copy
+      </Button>
+      <p>Then agree a pickup time with the seller.</p>
+      <span className={styles.srOnly} aria-live="polite">{notice}</span>
+    </section>
   );
 }

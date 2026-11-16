@@ -13,8 +13,8 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.app.api.runs import PgRuns
-from backend.app.api.schemas import Decision, StartRequest
-from backend.app.api.service import Conflict, NotFound, Service
+from backend.app.api.schemas import Decision, Reply, StartRequest
+from backend.app.api.service import Conflict, NotFound, Rejected, Service
 from backend.app.boundaries.calendar_port import McpCalendarPort
 from backend.app.boundaries.session import McpSession
 from backend.app.llm.client import LLMClient
@@ -34,6 +34,8 @@ def call(fn, *args):
         raise HTTPException(404, "unknown negotiation") from None
     except Conflict as error:
         raise HTTPException(409, str(error)) from None
+    except Rejected as error:
+        raise HTTPException(422, error.messages) from None
 
 
 def sse(name: str, data, event_id: int | None = None) -> str:
@@ -101,17 +103,29 @@ def create_app(
 
     @app.post("/negotiations", status_code=201)
     def start(body: StartRequest, request: Request):
-        try:
-            get_persona(body.persona)
-        except Exception:  # noqa: BLE001 - any lookup failure means an unknown persona
-            raise HTTPException(422, f"unknown persona: {body.persona}") from None
+        copilot = body.mode == "copilot"
+        if not copilot:  # a copilot run has a real seller, so the persona is ignored
+            try:
+                get_persona(body.persona)
+            except Exception:  # noqa: BLE001 - any lookup failure means an unknown persona
+                raise HTTPException(422, f"unknown persona: {body.persona}") from None
         config = {
             "asking": str(body.asking),
             "budget": str(body.budget),
             "persona": body.persona,
             "style": body.style,
-            "autonomy": body.autonomy,
+            "autonomy": "approve_close" if copilot else body.autonomy,
             "seed": body.seed,
+            "mode": body.mode,
+            "item_title": body.item_title,
+            "seller_opening": body.seller_opening,
+            "category": body.category if copilot else None,
+            "listing_text": body.listing_text if copilot else None,
+            "comparables": (
+                [str(price) for price in body.comparables]
+                if copilot and body.comparables
+                else None
+            ),
         }
         return {"id": request.app.state.service.start(config)}
 
@@ -127,6 +141,16 @@ def create_app(
     @app.post("/negotiations/{run_id}/resume", status_code=202)
     def resume(run_id: str, request: Request):
         call(request.app.state.service.resume_run, run_id)
+        return {"accepted": True}
+
+    @app.post("/negotiations/{run_id}/reply", status_code=202)
+    def reply(run_id: str, body: Reply, request: Request):
+        call(request.app.state.service.reply_run, run_id, body.reply, body.sent_text)
+        return {"accepted": True}
+
+    @app.post("/negotiations/{run_id}/stop", status_code=202)
+    def stop(run_id: str, request: Request):
+        call(request.app.state.service.stop_run, run_id)
         return {"accepted": True}
 
     @app.get("/negotiations/{run_id}/events")

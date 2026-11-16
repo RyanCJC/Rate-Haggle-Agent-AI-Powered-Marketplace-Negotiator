@@ -24,12 +24,13 @@ export function Deal({ snapshot, trace, notFound, onHome }: DealProps) {
   const asking = Number(config.asking);
   const limit = Number(config.budget);
   const dealPrice = final_price == null ? null : Number(final_price);
+  const copilot = config.mode === "copilot";
 
   return (
     <section className={styles.deal}>
       <PriceLadder trace={trace} asking={asking} limit={limit} dealPrice={dealPrice} />
       {status === "finished" ? (
-        <DealOutcome snapshot={snapshot} asking={asking} dealPrice={dealPrice} onHome={onHome} />
+        <DealOutcome snapshot={snapshot} asking={asking} dealPrice={dealPrice} onHome={onHome} copilot={copilot} />
       ) : (
         <Card padding="lg" className={styles.placeholder}>
           Deal details appear here when a negotiation finishes.

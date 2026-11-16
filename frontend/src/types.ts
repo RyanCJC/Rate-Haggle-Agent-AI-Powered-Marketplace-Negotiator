@@ -5,14 +5,23 @@ export type Status =
   | "failed"
   | "stalled"
   | "lost";
+export type Mode = "simulate" | "copilot";
 export type Autonomy = "auto" | "approve_close";
 export type Style = "aggressive" | "balanced" | "safe";
 export type Theme = "system" | "light" | "dark";
+export type ListingCategory = "monitors" | "phones" | "laptops" | "other";
+export type FactStatus = "confirmed" | "claimed" | "conflicting" | "missing";
+export type Question =
+  | { gate: "close_deal"; price: string | null; draft?: string }
+  | { gate: "seller_reply"; kind: "offer" | "question"; price: string | null; draft: string }
+  | { gate: "book_pickup"; price: string | null; draft?: string };
 
-export interface Question {
-  gate: "close_deal" | "book_pickup";
-  price: string | null;
-  draft?: string;
+export interface ItemFact {
+  key: string;
+  value: string | null;
+  status: FactStatus;
+  source: string;
+  evidence: string | null;
 }
 
 export interface Pickup {
@@ -36,6 +45,12 @@ export interface Snapshot {
     style: Style;
     autonomy: Autonomy;
     seed: number;
+    mode?: Mode;
+    item_title?: string | null;
+    seller_opening?: string | null;
+    category?: ListingCategory | null;
+    listing_text?: string | null;
+    comparables?: string[] | null;
   };
   error: string | null;
   question: Question | null;
@@ -47,6 +62,7 @@ export interface Snapshot {
   our_offers: string[];
   seller_prices: string[];
   trace: TraceEntry[];
+  facts: ItemFact[];
 }
 
 export interface StartBody {
@@ -55,4 +71,10 @@ export interface StartBody {
   persona: string;
   style: Style;
   autonomy: Autonomy;
+  mode?: Mode;
+  item_title?: string | null;
+  seller_opening?: string | null;
+  category?: ListingCategory | null;
+  listing_text?: string | null;
+  comparables?: number[] | null;
 }

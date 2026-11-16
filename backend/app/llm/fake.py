@@ -69,7 +69,10 @@ class RuleBasedLLM:
         return {"tool": "proceed"}
 
     def _facts(self, user: str) -> dict:
-        match = re.search(r"Seller message: (.*)\nAllowed keys:", user, re.DOTALL)
+        match = re.search(
+            r"(?s)Seller message:\s*(?:<seller_message>\n)?(.*?)(?:\n</seller_message>)?\nAllowed keys:",
+            user,
+        )
         text = match.group(1) if match else ""
         claims = extract_claims(text, "seller_chat")
         return {"facts": [{"key": c.key, "value": c.value, "quote": c.quote} for c in claims]}

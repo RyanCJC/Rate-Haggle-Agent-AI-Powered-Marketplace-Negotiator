@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../ui/icon/icon";
 import { buildTimeline, type TimelineModel, type TraceStep, violationReason } from "../../lib/traceModel";
-import type { TraceEntry } from "../../types";
+import type { Snapshot, TraceEntry } from "../../types";
 import styles from "./activityPanel.module.css";
 
 export interface ActivityPanelProps {
   trace: TraceEntry[];
   connection: "live" | "reconnecting" | "closed";
+  snapshot?: Snapshot;
 }
 
 function nodeIcon(node: string) {
@@ -34,8 +35,12 @@ function nodeIcon(node: string) {
   }
 }
 
-export function ActivityPanel({ trace, connection }: ActivityPanelProps) {
-  const model: TimelineModel = buildTimeline(trace);
+export function ActivityPanel({ trace, connection, snapshot }: ActivityPanelProps) {
+  const model: TimelineModel = buildTimeline(
+    trace,
+    snapshot?.question ?? null,
+    snapshot?.config.mode === "copilot",
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const [showJump, setShowJump] = useState(false);
 
@@ -90,7 +95,7 @@ export function ActivityPanel({ trace, connection }: ActivityPanelProps) {
                   <div data-step-icon className={styles.stepMarker}>{nodeIcon(step.node)}</div>
                   <div className={styles.stepBody}>
                     <div data-step-title className={styles.stepLabel}>{step.label}</div>
-                    {renderStepDetail(step)}
+                    {renderStepDetail(step, snapshot?.config.mode === "copilot")}
                   </div>
                 </li>
               ))}
@@ -105,12 +110,25 @@ export function ActivityPanel({ trace, connection }: ActivityPanelProps) {
                 <div data-step-icon className={styles.stepMarker}>{nodeIcon(step.node)}</div>
                 <div className={styles.stepBody}>
                   <div data-step-title className={styles.stepLabel}>{step.label}</div>
-                  {renderStepDetail(step)}
+                  {renderStepDetail(step, snapshot?.config.mode === "copilot")}
                 </div>
               </li>
             </ul>
           </div>
         ))}
+        {model.pending && (
+          <div className={styles.turn}>
+            <div className={styles.turnTitle}>{model.pending.label}</div>
+            <ul className={styles.steps}>
+              <li data-step className={styles.step}>
+                <div data-step-icon className={styles.stepMarker}><Icon name="Send" size={16} /></div>
+                <div className={styles.stepBody}>
+                  <div data-step-title className={styles.stepLabel}>{model.pending.label}</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        )}
         {model.turns.length === 0 && model.terminal.length === 0 && (
           <p className={styles.empty}>No activity yet.</p>
         )}
@@ -126,7 +144,7 @@ export function ActivityPanel({ trace, connection }: ActivityPanelProps) {
   );
 }
 
-function renderStepDetail(step: TraceStep): ReactNode {
+function renderStepDetail(step: TraceStep, copilot = false): ReactNode {
   switch (step.node) {
     case "plan":
       return (
@@ -165,7 +183,7 @@ function renderStepDetail(step: TraceStep): ReactNode {
               </li>
             ))}
           </ul>
-          {validate.rejectedDraft && (
+          {validate.rejectedDraft && !copilot && (
             <blockquote className={styles.rejectedDraft}>
               <span className={styles.rejectedDraftLabel}>Draft that was blocked</span>
               <span className={styles.rejectedDraftText}>{validate.rejectedDraft}</span>
@@ -179,6 +197,17 @@ function renderStepDetail(step: TraceStep): ReactNode {
     case "execute": {
       const exec = step.execute;
       if (!exec) return null;
+      if (exec.relayed) {
+        const detail =
+          exec.action === "offer" && exec.price != null
+            ? `Offer RM ${exec.price}`
+            : "Message sent";
+        return (
+          <span className={styles.detailText}>
+            {detail}{exec.edited ? " · edited by you" : ""}
+          </span>
+        );
+      }
       if (exec.action === "accept") {
         return <span className={styles.detailText}>Deal accepted at {exec.price != null ? `RM ${exec.price}` : "the seller&rsquo;s price"}.</span>;
       }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Home } from "./features/home/Home";
 import { Workspace } from "./features/negotiation/Workspace";
 import { TopBar } from "./components/shell/TopBar";
+import type { Mode } from "./types";
 
 function readRun(): string | null {
   const match = window.location.hash.match(/^#\/run\/([0-9a-f]+)$/);
@@ -10,25 +11,33 @@ function readRun(): string | null {
 
 export default function App() {
   const [runId, setRunId] = useState<string | null>(readRun);
+  const [mode, setMode] = useState<Mode | null>(null);
 
   useEffect(() => {
-    const onHash = () => setRunId(readRun());
+    const onHash = () => {
+      setRunId(readRun());
+      setMode(null);
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   return (
     <div className="app">
-      <TopBar />
+      <TopBar mode={runId ? mode : null} />
       <main className="app__main">
         {runId ? (
-          <Workspace runId={runId} onHome={() => (window.location.hash = "")} />
+          <Workspace
+            runId={runId}
+            onHome={() => (window.location.hash = "")}
+            onModeChange={setMode}
+          />
         ) : (
           <Home onStart={(id: string) => (window.location.hash = `/run/${id}`)} />
         )}
       </main>
       <footer className="app__footer">
-        Haggle &mdash; practice mode. The AI writes wording; plain code owns the price. Your limit never reaches the AI.
+        Haggle &mdash; the AI writes wording; plain code owns the price. Your limit never reaches the AI.
       </footer>
     </div>
   );

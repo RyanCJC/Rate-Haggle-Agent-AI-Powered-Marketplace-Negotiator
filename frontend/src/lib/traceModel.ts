@@ -1,4 +1,4 @@
-import type { TraceEntry } from "../types";
+import type { Question, TraceEntry } from "../types";
 
 export type TraceNode =
   | "plan"
@@ -32,6 +32,8 @@ export interface ExecuteStep {
   price: string | null;
   declined?: boolean;
   error: string | null;
+  relayed: boolean;
+  edited: boolean;
 }
 
 export interface IngestStep {
@@ -82,6 +84,7 @@ export interface Turn {
 export interface TimelineModel {
   turns: Turn[];
   terminal: TraceStep[];
+  pending: { label: string } | null;
 }
 
 const STEP_LABEL: Record<string, string> = {
@@ -107,7 +110,7 @@ const VIOLATION_REASON: Record<string, string> = {
   above_asking: "Never offer more than the seller is asking.",
   phase_not_allowed: "That action is not allowed right now.",
   no_draft: "Write a message.",
-  ungrounded_claim: "Do not state item details that are not in the known facts.",
+  ungrounded_claim: "Blocked: the draft stated an item detail that is not in the listing or the chat.",
 };
 
 export function violationReason(code: string): string {
@@ -147,6 +150,8 @@ function asExecute(entry: TraceEntry): ExecuteStep {
     price: entry.price === null || entry.price === undefined ? null : String(entry.price),
     declined: entry.declined === true,
     error: entry.error === null || entry.error === undefined ? null : String(entry.error),
+    relayed: entry.relayed === true,
+    edited: entry.edited === true,
   };
 }
 
@@ -196,7 +201,11 @@ function turnTitle(kind: string, price: string | null): string {
   return `${label}${pricePart}`;
 }
 
-export function buildTimeline(trace: TraceEntry[]): TimelineModel {
+export function buildTimeline(
+  trace: TraceEntry[],
+  question: Question | null = null,
+  copilot = false,
+): TimelineModel {
   const turns: Turn[] = [];
   const terminal: TraceStep[] = [];
   let current: Turn | null = null;
@@ -229,6 +238,7 @@ export function buildTimeline(trace: TraceEntry[]): TimelineModel {
       current.steps.push({ node: "plan", label: stepLabel("plan"), plan: asPlan(entry) });
       continue;
     }
+    if (node === "schedule" && copilot) continue;
     if (node === "finalize" || node === "schedule") {
       flushClarify();
       terminal.push({
@@ -258,13 +268,19 @@ export function buildTimeline(trace: TraceEntry[]): TimelineModel {
       case "fallback":
         current.steps.push({ node: "fallback", label: stepLabel("fallback") });
         break;
-      case "execute":
+      case "execute": {
+        const execute = asExecute(entry);
         current.steps.push({
           node: "execute",
-          label: entry.action === "accept" || entry.action === "walk_away" ? "Close" : stepLabel("execute"),
-          execute: asExecute(entry),
+          label: execute.relayed
+            ? "You sent this to the seller"
+            : entry.action === "accept" || entry.action === "walk_away"
+              ? "Close"
+              : stepLabel("execute"),
+          execute,
         });
         break;
+      }
       case "ingest":
         current.steps.push({ node: "ingest", label: stepLabel("ingest"), ingest: asIngest(entry) });
         break;
@@ -273,5 +289,9 @@ export function buildTimeline(trace: TraceEntry[]): TimelineModel {
     }
   }
 
-  return { turns, terminal };
+  return {
+    turns,
+    terminal,
+    pending: question?.gate === "seller_reply" ? { label: "Waiting for you to send the message" } : null,
+  };
 }

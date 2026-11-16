@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from .client import LLMClient
+from .untrusted import UNTRUSTED_NOTE, wrap_untrusted, wrap_untrusted_inline
 
 
 class ClarifyStep(BaseModel):
@@ -23,6 +24,7 @@ the seller's last message gave no price or changed the terms, and only if questi
 Do not repeat a tool whose result you already have. Never put numbers, budgets or limits in a \
 question. Return the tool and, for ask_seller, the question text."""
 
+CLARIFY_SYSTEM = f"{CLARIFY_SYSTEM}\n\n{UNTRUSTED_NOTE}"
 
 def build_clarify_prompt(
     seller_text: str,
@@ -34,13 +36,15 @@ def build_clarify_prompt(
     max_steps: int = 4,
 ) -> tuple[str, str]:
     lines = [
-        f"Seller's last message: {seller_text}",
+        f"Seller's last message:\n{wrap_untrusted(seller_text)}",
         f"Seller's last message had a price: {'yes' if gave_price else 'no'}",
         f"Seller changed terms: {'yes' if terms_changed else 'no'}",
         f"Questions left: {asks_left}",
         f"Step {step_no} of {max_steps}",
     ]
-    lines.extend(f"Tool result ({tool}): {output}" for tool, output in results)
+    lines.extend(
+        f"Tool result ({tool}): {wrap_untrusted_inline(output)}" for tool, output in results
+    )
     lines.append("Choose the next step.")
     return CLARIFY_SYSTEM, "\n".join(lines)
 

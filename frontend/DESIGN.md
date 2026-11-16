@@ -2,9 +2,9 @@
 
 ## Scope
 
-Desktop-first. The primary target is **desktop-light** (1440x900, light colour scheme),
-covered by automated Playwright tests. A dark theme and a stacked mobile layout exist in
-the codebase but are **not covered by automated tests** — they are verified manually only.
+The tested target is **desktop-light** (1440x900, light colour scheme), covered by
+Playwright. The existing dark theme and stacked mobile layout were not changed or tested
+as part of Copilot mode.
 
 ## Principles ("paper and ink")
 
@@ -113,6 +113,33 @@ no external font requests).
 System / Light / Dark toggle stored in `localStorage` (key `haggle-theme`, try/catch).
 `prefers-color-scheme` respected when set to "system".
 
+## Copilot negotiation feature
+
+`src/features/negotiation/CopilotComposer.tsx` provides the seller-reply form: a read-only draft,
+copy action, edit disclosure, seller-reply textarea, submit action, and inline stop confirmation.
+It is shown only at a `seller_reply` gate. A pending draft is rendered separately from conversation
+history; a busy run shows the typing indicator. The close-approval panel and final-message panel
+appear at their respective states. The Copilot Deal card asks the user to agree a pickup time and
+does not show a pickup booking.
+
+Copilot Home accepts an optional category, listing text, and up to eight comparable prices. Listing
+and seller-chat claims appear in the Copilot-only **Item** tab with their status, source, and available
+evidence. With no recognized facts, the agent is instructed to avoid item-detail claims and ask
+instead. The user's own edits are checked for price and limit rules, not item-fact grounding.
+
+The market check displays the median of user-entered comparable prices and the asking price and limit
+as percentages above or below that median. Comparables are informational only: the agent's strategy
+does not use them, and Haggle does not look up market prices. Fact extraction recognizes supported
+keys and wording; it is not an exhaustive natural-language verifier.
+
+The status chip and Activity pending step are derived from the current snapshot question, not
+historical trace events. Activity omits Copilot schedule steps and rejected draft text.
+
+The desktop-light Playwright suite exercises listing-aware Copilot Home, the Item tab, the
+seller-reply gate and composer with axe, editing validation and recovery, stop confirmation, reload
+persistence, Ctrl+Enter submission, visible-box geometry, close approval, final-message
+presentation, and the no-pickup-booking outcome.
+
 ## Accessibility rules
 
 - **Contrast**: text pairs ≥ 4.5:1, borders/focus rings ≥ 3:1 on light theme (verified by
@@ -136,10 +163,14 @@ npm run e2e     # Playwright (desktop-light, 1440x900, light scheme)
 Backend (`HAGGLE_LLM` must not be "live"):
 ```
 ruff check .
-pytest backend/tests -q --ignore=backend/tests/test_db.py   # expect 285 passed
+pytest backend/tests -q --ignore=backend/tests/test_db.py   # expect 318 passed
 ```
 
 ## Trace model
+
+For Copilot, the current seller-reply question adds a pending "Waiting for you to send the
+message" step. Relayed and edited buyer messages receive distinct Activity labels, and schedule
+steps are omitted.
 
 `src/lib/traceModel.ts` converts raw trace entries into a grouped timeline model
 (turns → steps → terminal). Pure function, unit-tested against `run-deal.json`,

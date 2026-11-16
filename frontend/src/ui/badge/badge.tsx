@@ -7,8 +7,8 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant;
 }
 
-const VARIANT: Record<BadgeVariant, string> = {
-  default: styles.badge,
+const VARIANT: Record<BadgeVariant, string | undefined> = {
+  default: undefined,
   success: styles.badgeSuccess,
   warning: styles.badgeWarning,
   danger: styles.badgeDanger,
@@ -17,6 +17,6 @@ const VARIANT: Record<BadgeVariant, string> = {
 
 export function Badge({ variant = "default", className, ...props }: BadgeProps) {
   return (
-    <span className={[VARIANT[variant], className].filter(Boolean).join(" ")} {...props} />
+    <span className={[styles.badge, VARIANT[variant], className].filter(Boolean).join(" ")} {...props} />
   );
 }

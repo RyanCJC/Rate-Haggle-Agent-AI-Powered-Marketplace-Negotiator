@@ -36,17 +36,7 @@
 }
 
 .status {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 110px;
-  flex: none;
-}
-
-.statusValue {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--color-primary);
+  align-self: flex-end;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-sans);
 }

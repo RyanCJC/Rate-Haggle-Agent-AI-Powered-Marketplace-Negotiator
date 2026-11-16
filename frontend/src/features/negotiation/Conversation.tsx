@@ -4,6 +4,8 @@ import styles from "./conversation.module.css";
 export interface ConversationProps {
   history: Snapshot["history"];
   typing: boolean;
+  pendingDraft?: string | null;
+  copilot?: boolean;
 }
 
 const AVATAR: Record<string, { label: string; className: string }> = {
@@ -11,9 +13,13 @@ const AVATAR: Record<string, { label: string; className: string }> = {
   seller: { label: "S", className: styles.avatarSeller },
 };
 
-export function Conversation({ history, typing }: ConversationProps) {
+export function Conversation({ history, typing, pendingDraft, copilot = false }: ConversationProps) {
   return (
-    <div className={styles.conversation}>
+    <div
+      className={[styles.conversation, copilot && styles.conversationCopilot].filter(Boolean).join(" ")}
+      tabIndex={copilot ? 0 : undefined}
+      aria-label={copilot ? "Conversation history" : undefined}
+    >
       <div className={styles.messages}>
         {history.map(([role, text], index) => {
           const avatar = AVATAR[role] ?? AVATAR.seller;
@@ -33,11 +39,16 @@ export function Conversation({ history, typing }: ConversationProps) {
           );
         })}
         {typing && (
-          <div className={styles.typing}>
+          <div className={styles.typing} role="status" aria-label="Agent is writing">
             <span aria-hidden="true"></span>
             <span aria-hidden="true"></span>
             <span aria-hidden="true"></span>
-            <span className={styles.srOnly}>Agent is writing</span>
+          </div>
+        )}
+        {copilot && pendingDraft && (
+          <div className={styles.pendingDraft} data-testid="pending-draft">
+            <span className={styles.pendingLabel}>Draft to send</span>
+            <p className={styles.text}>{pendingDraft}</p>
           </div>
         )}
       </div>

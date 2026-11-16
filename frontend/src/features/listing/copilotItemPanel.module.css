@@ -1,0 +1,113 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  color: var(--color-ink);
+}
+
+.summary {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.tableWrap {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.table th,
+.table td {
+  min-width: 0;
+  padding: var(--space-2);
+  border-bottom: var(--elev-1);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.table th {
+  font-weight: 700;
+}
+
+.table thead th {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table tr:last-child > * {
+  border-bottom: 0;
+}
+
+.table th:nth-child(1) {
+  width: 21%;
+}
+
+.table th:nth-child(2) {
+  width: 25%;
+}
+
+.table th:nth-child(3) {
+  width: 27%;
+}
+
+.table th:nth-child(4) {
+  width: 27%;
+}
+
+.status {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.evidence {
+  margin-top: var(--space-1);
+}
+
+.evidence summary {
+  width: fit-content;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.evidence q {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-lh);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}

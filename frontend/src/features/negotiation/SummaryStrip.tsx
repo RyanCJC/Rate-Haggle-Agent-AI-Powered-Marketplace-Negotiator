@@ -1,16 +1,8 @@
 import type { Snapshot } from "../../types";
+import { statusChipLabel } from "../../state";
 import { formatRm } from "../../lib/format";
 import { Badge } from "../../ui/badge/badge";
 import styles from "./summaryStrip.module.css";
-
-const STATUS_LABEL: Record<string, string> = {
-  running: "Running",
-  waiting_for_approval: "Waiting for approval",
-  finished: "Finished",
-  failed: "Failed",
-  stalled: "Stalled",
-  lost: "Lost",
-};
 
 export interface SummaryStripProps {
   snapshot: Snapshot;
@@ -23,7 +15,7 @@ export function SummaryStrip({ snapshot }: SummaryStripProps) {
   const sellerLatest = seller_prices.length ? Number(seller_prices[seller_prices.length - 1]) : null;
   const gap = bestOffer === null ? null : asking - bestOffer;
 
-  const statusLabel = STATUS_LABEL[status] ?? status;
+  const statusLabel = statusChipLabel(snapshot.question, status);
 
   return (
     <div className={styles.strip}>
@@ -47,10 +39,13 @@ export function SummaryStrip({ snapshot }: SummaryStripProps) {
         <span className={styles.label}>Gap to close</span>
         <span className={styles.price}>{gap === null ? "—" : formatRm(gap)}</span>
       </div>
-      <div className={styles.status} data-testid="run-status">
-        <Badge variant="neutral" />
-        <span className={styles.statusValue}>{statusLabel}</span>
-      </div>
+      <Badge
+        variant="neutral"
+        className={styles.status}
+        data-testid="run-status"
+      >
+        {statusLabel}
+      </Badge>
     </div>
   );
 }
