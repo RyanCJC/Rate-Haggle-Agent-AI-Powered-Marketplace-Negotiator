@@ -3,6 +3,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
+from backend.app.core.calendar_rules import to_myt_iso
+from backend.app.core.pickup import describe_slot, pickup_message
 from backend.app.graph.builder import build_graph, make_config, run_graph
 from backend.app.graph.control import (
     approve,
@@ -14,7 +16,7 @@ from backend.app.graph.control import (
 )
 from backend.app.graph.manual import ManualSellerPort
 from backend.app.graph.nodes import check_draft, context, decision_of
-from backend.app.graph.ports import SimSellerPort
+from backend.app.graph.ports import CalendarError, SimSellerPort
 from backend.app.llm.fake import RuleBasedLLM
 from backend.app.sim.personas import get_persona
 from backend.app.sim.seller import SimSeller
@@ -34,6 +36,9 @@ class Rejected(Exception):
     def __init__(self, messages: list[str]):
         super().__init__("; ".join(messages))
         self.messages = messages
+
+class Unavailable(Exception):
+    """A dependency (the calendar) could not be reached."""
 
 
 def listing_of(config: dict) -> tuple[dict | None, list[Decimal] | None]:
@@ -115,6 +120,57 @@ class Service:
             raise
         self._pool.submit(self._drive, run_id, "resume", None)
 
+    # -- pickup (copilot) -------------------------------------------------------------------
+    def pickup_options(self, run_id: str, count: int = 5) -> dict:
+        """Free slots plus a ready-to-send message for the seller. Code writes the message."""
+        _, values = self._deal_state(run_id)
+        booked = values.get("pickup")
+        if booked and booked.get("status") == "booked":
+            return {"slots": [], "labels": [], "message": None, "pickup": booked}
+        try:
+            slots = self.calendar.propose_slots(count)
+        except CalendarError as error:
+            raise Unavailable("the calendar is unavailable, try again") from error
+        return {
+            "slots": slots,
+            "labels": [describe_slot(s) for s in slots],
+            "message": pickup_message(values["final_price"], slots),
+            "pickup": None,
+        }
+
+    def book_pickup(self, run_id: str, start_at: str) -> dict:
+        """Book the time the seller agreed to, through the same idempotent boundary."""
+        config, _ = self._deal_state(run_id)
+        key = f"{run_id}:pickup"  # the same negotiation always uses the same key
+        with self._lock(run_id):
+            try:
+                result = self.calendar.book_slot(key, run_id, start_at)
+            except CalendarError as error:
+                raise Unavailable("the calendar is unavailable, try again") from error
+            status = result["status"]
+            if status == "invalid":
+                raise Rejected([result.get("detail") or "that time cannot be booked"])
+            if status == "slot_taken":
+                raise Conflict("that time was just taken: pick another")
+            pickup = {"status": "booked", "start_at": to_myt_iso(result["start_at"])}
+            self._store_pickup(config, run_id, pickup)  # also heals a crash after booking
+            if status == "already_booked" and not result.get("same_slot"):
+                raise Conflict(
+                    f"a pickup is already booked for {describe_slot(pickup['start_at'])}: "
+                    "cancel it first"
+                )
+            return pickup
+
+    def cancel_pickup(self, run_id: str) -> dict:
+        config, _ = self._deal_state(run_id)
+        with self._lock(run_id):
+            try:
+                result = self.calendar.cancel_booking(f"{run_id}:pickup")
+            except CalendarError as error:
+                raise Unavailable("the calendar is unavailable, try again") from error
+            self._store_pickup(config, run_id, None)
+            return {"status": result["status"]}
+
     # -- reading ----------------------------------------------------------------------------
 
     def snapshot(self, run_id: str) -> dict:
@@ -162,6 +218,24 @@ class Service:
         if config is None:
             raise NotFound(run_id)
         return config
+
+    def _deal_state(self, run_id: str):
+        """The config and stored values of a finished copilot deal, or a refusal."""
+        config = self._config(run_id)
+        if config.get("mode", "simulate") != "copilot":
+            raise Conflict("pickup coordination is only for copilot negotiations")
+        if run_id in self._busy:
+            raise Conflict("the negotiation is busy")
+        state = self._graph(config, None).get_state(make_config(run_id))
+        if state.next or state.values.get("outcome") != "deal":
+            raise Conflict("there is no agreed deal to arrange a pickup for")
+        return config, state.values
+
+    def _store_pickup(self, config: dict, run_id: str, pickup: dict | None) -> None:
+        """Write the result into the stored run, so a reload or restart still sees it."""
+        self._graph(config, None).update_state(
+            make_config(run_id), {"pickup": pickup}, as_node="finalize"
+        )
 
     def _graph(self, config: dict, port):
         simulate = config.get("mode", "simulate") == "simulate"

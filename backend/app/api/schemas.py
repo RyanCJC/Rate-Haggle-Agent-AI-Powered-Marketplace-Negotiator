@@ -59,3 +59,7 @@ class Reply(BaseModel):
     @classmethod
     def tidy_sent(cls, value: str | None) -> str | None:
         return None if value is None else (clean(value) or None)
+
+
+class Pickup(BaseModel):
+    start_at: str = Field(min_length=1, max_length=64)

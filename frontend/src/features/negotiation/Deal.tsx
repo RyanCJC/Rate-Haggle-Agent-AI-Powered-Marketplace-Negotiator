@@ -10,9 +10,11 @@ export interface DealProps {
   trace: TraceEntry[];
   notFound: boolean;
   onHome: () => void;
+  refreshSnapshot: () => Promise<Snapshot | null>;
+  onArrangePickup: () => void;
 }
 
-export function Deal({ snapshot, trace, notFound, onHome }: DealProps) {
+export function Deal({ snapshot, trace, notFound, onHome, refreshSnapshot, onArrangePickup }: DealProps) {
   if (notFound) {
     return <NotFoundScreen onHome={onHome} />;
   }
@@ -30,7 +32,15 @@ export function Deal({ snapshot, trace, notFound, onHome }: DealProps) {
     <section className={styles.deal}>
       <PriceLadder trace={trace} asking={asking} limit={limit} dealPrice={dealPrice} />
       {status === "finished" ? (
-        <DealOutcome snapshot={snapshot} asking={asking} dealPrice={dealPrice} onHome={onHome} copilot={copilot} />
+        <DealOutcome
+          snapshot={snapshot}
+          asking={asking}
+          dealPrice={dealPrice}
+          onHome={onHome}
+          copilot={copilot}
+          refreshSnapshot={refreshSnapshot}
+          onArrangePickup={onArrangePickup}
+        />
       ) : (
         <Card padding="lg" className={styles.placeholder}>
           Deal details appear here when a negotiation finishes.

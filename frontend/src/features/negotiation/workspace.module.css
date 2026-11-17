@@ -46,6 +46,9 @@
 
 .conversationColCopilot {
   min-width: 0;
+  gap: var(--space-4);
+  border: 0;
+  background: transparent;
 }
 
 .finalMessage {

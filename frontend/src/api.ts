@@ -1,8 +1,9 @@
-import type { Snapshot, StartBody } from "./types";
+import type { CancelPickupResult, PickupOptions, Snapshot, StartBody, BookedPickup } from "./types";
 
 const BASE: string = import.meta.env.VITE_API_URL ?? "/api";
 
-interface RequestError extends Error {
+export interface ApiError extends Error {
+  status: number;
   messages?: string[];
 }
 
@@ -29,7 +30,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // keep the status text
     }
-    const error = new Error(detail) as RequestError;
+    const error = new Error(detail) as ApiError;
+    error.status = response.status;
     if (messages && messages.length) {
       error.messages = messages;
     }
@@ -60,5 +62,17 @@ export const stopRun = (id: string) =>
 
 export const resumeRun = (id: string) =>
   request<{ accepted: boolean }>(`/negotiations/${id}/resume`, { method: "POST" });
+
+export const getPickupOptions = (id: string, count = 5) =>
+  request<PickupOptions>(`/negotiations/${id}/pickup/options?count=${count}`);
+
+export const bookPickup = (id: string, startAt: string) =>
+  request<BookedPickup>(`/negotiations/${id}/pickup`, {
+    method: "POST",
+    body: JSON.stringify({ start_at: startAt }),
+  });
+
+export const cancelPickup = (id: string) =>
+  request<CancelPickupResult>(`/negotiations/${id}/pickup`, { method: "DELETE" });
 
 export const eventsUrl = (id: string) => `${BASE}/negotiations/${id}/events`;

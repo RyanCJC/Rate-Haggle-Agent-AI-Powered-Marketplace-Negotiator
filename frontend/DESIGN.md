@@ -119,13 +119,17 @@ System / Light / Dark toggle stored in `localStorage` (key `haggle-theme`, try/c
 copy action, edit disclosure, seller-reply textarea, submit action, and inline stop confirmation.
 It is shown only at a `seller_reply` gate. A pending draft is rendered separately from conversation
 history; a busy run shows the typing indicator. The close-approval panel and final-message panel
-appear at their respective states. The Copilot Deal card asks the user to agree a pickup time and
-does not show a pickup booking.
+appear at their respective states. Finished Copilot deals include a pickup coordinator on the Deal
+tab. It proposes slots from Haggle's own calendar, offers custom-time entry, and records the time
+the human says the seller agreed to. Its seller message is written by code, not a model; Haggle does
+not notify the seller or sync with another calendar. Booking the same time is idempotent and is
+persisted with the run across reloads and server restarts.
 
 Copilot Home accepts an optional category, listing text, and up to eight comparable prices. Listing
-and seller-chat claims appear in the Copilot-only **Item** tab with their status, source, and available
-evidence. With no recognized facts, the agent is instructed to avoid item-detail claims and ask
-instead. The user's own edits are checked for price and limit rules, not item-fact grounding.
+and seller-chat claims appear in the Copilot-only **Item** tab as stacked fact rows with their status,
+source, and available evidence. With no recognized facts, the agent is instructed to avoid
+item-detail claims and ask instead. The user's own edits are checked for price and limit rules, not
+item-fact grounding.
 
 The market check displays the median of user-entered comparable prices and the asking price and limit
 as percentages above or below that median. Comparables are informational only: the agent's strategy
@@ -138,7 +142,8 @@ historical trace events. Activity omits Copilot schedule steps and rejected draf
 The desktop-light Playwright suite exercises listing-aware Copilot Home, the Item tab, the
 seller-reply gate and composer with axe, editing validation and recovery, stop confirmation, reload
 persistence, Ctrl+Enter submission, visible-box geometry, close approval, final-message
-presentation, and the no-pickup-booking outcome.
+presentation, and pickup coordination including proposal, idempotent booking, cancellation,
+custom-time validation, reload persistence, and calendar errors.
 
 ## Accessibility rules
 

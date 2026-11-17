@@ -18,7 +18,9 @@ export function Conversation({ history, typing, pendingDraft, copilot = false }:
     <div
       className={[styles.conversation, copilot && styles.conversationCopilot].filter(Boolean).join(" ")}
       tabIndex={copilot ? 0 : undefined}
+      role={copilot ? "region" : undefined}
       aria-label={copilot ? "Conversation history" : undefined}
+      data-testid={copilot ? "conversation-card" : undefined}
     >
       <div className={styles.messages}>
         {history.map(([role, text], index) => {
@@ -38,6 +40,9 @@ export function Conversation({ history, typing, pendingDraft, copilot = false }:
             </div>
           );
         })}
+        {copilot && history.length === 0 && (
+          <p className={styles.emptyHistory}>No messages sent yet.</p>
+        )}
         {typing && (
           <div className={styles.typing} role="status" aria-label="Agent is writing">
             <span aria-hidden="true"></span>
@@ -45,7 +50,7 @@ export function Conversation({ history, typing, pendingDraft, copilot = false }:
             <span aria-hidden="true"></span>
           </div>
         )}
-        {copilot && pendingDraft && (
+        {!copilot && pendingDraft && (
           <div className={styles.pendingDraft} data-testid="pending-draft">
             <span className={styles.pendingLabel}>Draft to send</span>
             <p className={styles.text}>{pendingDraft}</p>

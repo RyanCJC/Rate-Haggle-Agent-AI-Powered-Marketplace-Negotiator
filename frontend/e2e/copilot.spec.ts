@@ -10,7 +10,10 @@ function watchPageErrors(page: Page): void {
   const errors: string[] = [];
   errorsByPage.set(page, errors);
   page.on("console", (message) => {
-    if (message.type() === "error" && !/Failed to load resource:.*status of 422/.test(message.text())) {
+    if (
+      message.type() === "error" &&
+      !/Failed to load resource:.*status of (?:409|422|503)/.test(message.text())
+    ) {
       errors.push(message.text());
     }
   });
@@ -140,7 +143,7 @@ test.describe("Copilot mode", () => {
 
     const firstGate = await submitSellerReply(page, id, "Lowest I can go is RM 991.");
     if (firstGate === "seller_reply") {
-      await expect(page.getByTestId("pending-draft")).toBeVisible();
+      await expect(page.getByTestId("pending-draft")).toHaveCount(0);
       await expect(page.getByTestId("copilot-announcement")).toHaveText("New draft ready");
     }
 
@@ -215,7 +218,8 @@ test.describe("Copilot mode", () => {
 
   test("end negotiation asks for inline confirmation and removes the pending draft", async ({ page }) => {
     const id = await startCopilot(page);
-    await expect(page.getByTestId("pending-draft")).toBeVisible();
+    await expect(page.getByTestId("copilot-draft")).toBeVisible();
+    await expect(page.getByTestId("pending-draft")).toHaveCount(0);
     await page.getByTestId("copilot-end").click();
     await expect(page.getByTestId("copilot-stop-confirm")).toBeVisible();
     await page.getByRole("button", { name: "Yes, end it" }).click();
@@ -225,7 +229,7 @@ test.describe("Copilot mode", () => {
     }).toBe("user_stopped");
     await page.getByRole("tab", { name: "Deal" }).click();
     await expect(page.getByRole("heading", { name: "You ended the negotiation" })).toBeVisible();
-    await expect(page.getByTestId("pending-draft")).toHaveCount(0);
+    await expect(page.getByTestId("copilot-composer")).toHaveCount(0);
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(page.getByText("Dell monitor")).toBeVisible();
     await expect(page.getByText("Copilot", { exact: true })).toBeVisible();
@@ -270,7 +274,7 @@ test.describe("Copilot mode", () => {
 
     const geometry = await page.evaluate(() => {
       const composer = document.querySelector("[data-testid='copilot-composer']")!;
-      const pending = document.querySelector("[data-testid='pending-draft']")!;
+      const conversation = document.querySelector("[data-testid='conversation-card']")!;
       const targetSelectors = [
         "[data-testid='copilot-draft']",
         "[data-testid='copilot-copy']",
@@ -289,7 +293,7 @@ test.describe("Copilot mode", () => {
         };
       };
       const composerBox = rect(composer);
-      const pendingBox = rect(pending);
+      const conversationBox = rect(conversation);
       const controls = targetSelectors.map((selector) => {
         const element = document.querySelector(selector)!;
         const box = rect(element);
@@ -300,11 +304,12 @@ test.describe("Copilot mode", () => {
           box,
         };
       });
-      return { composerBox, pendingBox, controls };
+      return { composerBox, conversationBox, controls };
     });
-    const intersects = (a: typeof geometry.pendingBox, b: typeof geometry.pendingBox) =>
+    const intersects = (a: typeof geometry.conversationBox, b: typeof geometry.conversationBox) =>
       a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-    expect(intersects(geometry.pendingBox, geometry.composerBox)).toBe(false);
+    expect(geometry.composerBox.top).toBeGreaterThanOrEqual(geometry.conversationBox.bottom + 8);
+    expect(intersects(geometry.conversationBox, geometry.composerBox)).toBe(false);
     expect(geometry.controls.every((item) => item.inside)).toBe(true);
     for (let first = 0; first < geometry.controls.length; first += 1) {
       for (let second = first + 1; second < geometry.controls.length; second += 1) {
@@ -455,12 +460,17 @@ test.describe("Copilot mode", () => {
     await assertNoSeriousAxeViolations(page, "Copilot Item tab");
 
     const itemGeometry = await page.getByTestId("item-facts-container").evaluate((container) => {
-      const rows = [...container.querySelectorAll("tbody tr")];
+      const rows = [...container.querySelectorAll("[data-testid^='item-fact-']")];
       return {
         noHorizontalOverflow: container.scrollWidth <= container.clientWidth,
+        labelsNotClipped: rows.every((row) => {
+          const label = row.querySelector("h3");
+          return !!label && label.scrollWidth <= label.clientWidth;
+        }),
         statusValueOverlap: rows.map((row) => {
-          const value = row.cells[1].getBoundingClientRect();
-          const status = row.cells[2].querySelector("[data-testid^='fact-status-']");
+          const value = row.querySelector("p")?.getBoundingClientRect();
+          const status = row.querySelector("[data-testid^='fact-status-']");
+          if (!value) return false;
           if (!status) return true;
           const badge = status.getBoundingClientRect();
           return value.left < badge.right &&
@@ -468,10 +478,20 @@ test.describe("Copilot mode", () => {
             value.top < badge.bottom &&
             value.bottom > badge.top;
         }),
+        singleLineStatus: rows.every((row) => {
+          const status = row.querySelector("[data-testid^='fact-status-']");
+          return !!status && getComputedStyle(status).whiteSpace === "nowrap";
+        }),
+        evidenceHasNoRawSourcePrefix: !container.textContent?.includes("listing:"),
+        noUnknownSource: !container.textContent?.includes("None"),
       };
     });
     expect(itemGeometry.noHorizontalOverflow).toBe(true);
+    expect(itemGeometry.labelsNotClipped).toBe(true);
     expect(itemGeometry.statusValueOverlap.every((overlap) => !overlap)).toBe(true);
+    expect(itemGeometry.singleLineStatus).toBe(true);
+    expect(itemGeometry.evidenceHasNoRawSourcePrefix).toBe(true);
+    expect(itemGeometry.noUnknownSource).toBe(true);
 
     const itemMarket = page.getByTestId("market-check");
     await assertVisibleWithinViewport(page, itemMarket);

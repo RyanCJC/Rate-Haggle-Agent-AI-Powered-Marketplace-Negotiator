@@ -15,69 +15,68 @@
 .tableWrap {
   width: 100%;
   min-width: 0;
-  overflow-x: auto;
   border: var(--elev-1);
   border-radius: var(--radius);
   background: var(--color-surface);
 }
 
-.table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: var(--text-xs);
+.facts {
+  display: flex;
+  flex-direction: column;
 }
 
-.table th,
-.table td {
+.fact {
   min-width: 0;
-  padding: var(--space-2);
+  padding: var(--space-3);
   border-bottom: var(--elev-1);
-  text-align: left;
-  vertical-align: top;
-  overflow-wrap: anywhere;
 }
 
-.table th {
-  font-weight: 700;
-}
-
-.table thead th {
-  color: var(--color-muted);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.table tr:last-child > * {
+.fact:last-child {
   border-bottom: 0;
 }
 
-.table th:nth-child(1) {
-  width: 21%;
+.factHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-.table th:nth-child(2) {
-  width: 25%;
+.factHeading h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  hyphens: none;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
-.table th:nth-child(3) {
-  width: 27%;
-}
-
-.table th:nth-child(4) {
-  width: 27%;
-}
-
-.status {
-  max-width: 100%;
-  white-space: normal;
-  text-align: center;
+.value {
+  margin: var(--space-2) 0 0;
   overflow-wrap: anywhere;
+  font-size: var(--text-sm);
 }
 
-.evidence {
-  margin-top: var(--space-1);
+.evidenceLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-lh);
+}
+
+.source {
+  flex: 0 0 100%;
+}
+
+.evidenceQuote {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .evidence summary {
@@ -87,17 +86,24 @@
   font-weight: 600;
 }
 
-.evidence q {
-  display: block;
+.evidenceQuote {
   margin-top: var(--space-1);
-  color: var(--color-muted);
-  overflow-wrap: anywhere;
+}
+
+.status {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.evidenceQuote q {
+  color: var(--color-primary);
 }
 
 .note {
   color: var(--color-muted);
   font-size: var(--text-xs);
-  line-height: var(--text-xs-lh);
+  line-height: var(--text-sm-lh);
+  padding: var(--space-3);
 }
 
 .visuallyHidden {

@@ -28,6 +28,8 @@
 .count {
   color: var(--color-muted);
   font-size: var(--text-xs);
+  line-height: var(--text-sm-lh);
+  padding-top: var(--space-2);
 }
 
 .card p {

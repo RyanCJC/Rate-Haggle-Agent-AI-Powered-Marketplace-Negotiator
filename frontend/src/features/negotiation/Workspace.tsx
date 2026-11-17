@@ -25,9 +25,10 @@ export function Workspace({
   onHome: () => void;
   onModeChange: (mode: Mode | null) => void;
 }) {
-  const { snapshot, trace, error, connection, reopen } = useNegotiation(runId);
+  const { snapshot, trace, error, connection, refresh, reopen } = useNegotiation(runId);
   const [approving, setApproving] = useState(false);
   const [declining, setDeclining] = useState(false);
+  const [activeTab, setActiveTab] = useState("activity");
 
   useEffect(() => {
     onModeChange(snapshot?.config.mode ?? null);
@@ -62,6 +63,12 @@ export function Workspace({
   const handleRetry = useCallback(() => {
     reopen();
   }, [reopen]);
+  const handleArrangePickup = useCallback(() => {
+    setActiveTab("deal");
+    window.requestAnimationFrame(() => {
+      document.getElementById("copilot-pickup")?.scrollIntoView({ block: "start" });
+    });
+  }, []);
 
   if (notFound) {
     return <ErrorBoundary><NotFoundScreen onHome={onHome} /></ErrorBoundary>;
@@ -89,16 +96,7 @@ export function Workspace({
   const question = snapshot.question ?? null;
   const waitingForApproval = snapshot.status === "waiting_for_approval" && !!question;
   const showCloseGate = waitingForApproval && question?.gate === "close_deal";
-  const showSellerReplyGate = waitingForApproval && question?.gate === "seller_reply";
   const isCopilot = snapshot.config.mode === "copilot";
-  const pendingDraft =
-    isCopilot &&
-    showSellerReplyGate &&
-    question?.gate === "seller_reply" &&
-    snapshot.outcome !== "user_stopped" &&
-    snapshot.status !== "finished"
-      ? question.draft
-      : null;
   const finalMessage =
     isCopilot && snapshot.status === "finished" && snapshot.outcome === "deal"
       ? [...snapshot.history].reverse().find(([role]) => role === "buyer")?.[1] ?? null
@@ -119,14 +117,15 @@ export function Workspace({
           />
         )}
 
-        {finalMessage && <FinalMessagePanel message={finalMessage} />}
+        {finalMessage && (
+          <FinalMessagePanel message={finalMessage} onArrangePickup={handleArrangePickup} />
+        )}
 
         <div className={styles.split}>
           <div className={[styles.conversationCol, isCopilot && styles.conversationColCopilot].filter(Boolean).join(" ")}>
             <Conversation
               history={snapshot.history}
               typing={snapshot.status === "running"}
-              pendingDraft={pendingDraft}
               copilot={isCopilot}
             />
             {isCopilot && (
@@ -138,6 +137,8 @@ export function Workspace({
           </div>
           <div className={styles.sideCol}>
             <Tabs
+              activeId={activeTab}
+              onChange={setActiveTab}
               items={[
                 {
                   id: "activity",
@@ -159,6 +160,8 @@ export function Workspace({
                       trace={trace.map((item) => item.entry)}
                       notFound={false}
                       onHome={onHome}
+                      refreshSnapshot={refresh}
+                      onArrangePickup={handleArrangePickup}
                     />
                   ),
                 },
@@ -178,7 +181,7 @@ export function Workspace({
   );
 }
 
-function FinalMessagePanel({ message }: { message: string }) {
+function FinalMessagePanel({ message, onArrangePickup }: { message: string; onArrangePickup: () => void }) {
   const [notice, setNotice] = useState("");
 
   const copy = async () => {
@@ -204,6 +207,14 @@ function FinalMessagePanel({ message }: { message: string }) {
         Copy
       </Button>
       <p>Then agree a pickup time with the seller.</p>
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={onArrangePickup}
+        data-testid="final-arrange-pickup"
+      >
+        Arrange pickup
+      </Button>
       <span className={styles.srOnly} aria-live="polite">{notice}</span>
     </section>
   );

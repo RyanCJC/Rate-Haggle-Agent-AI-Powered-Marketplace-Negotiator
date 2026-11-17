@@ -132,8 +132,39 @@ export function PriceLadder({ trace, asking, limit, dealPrice }: PriceLadderProp
   const ariaLabel = ariaParts.join(" ");
 
   return (
-    <div className={styles.ladder} role="img" aria-label={ariaLabel}>
-      <svg ref={svgRef} className={styles.svg} viewBox={`0 0 590 280`} aria-hidden="true">
+    <div className={styles.ladder} role="img" aria-label={ariaLabel} data-testid="price-ladder">
+      <div className={styles.chartHeader}>
+        <span className={styles.axisTitle}>Price (RM)</span>
+        <div className={styles.legend} role="list" aria-label="Chart legend">
+          <span className={styles.legendItem} role="listitem">
+            <span className={[styles.swatch, styles.askingSwatch].join(" ")} aria-hidden="true" />
+            Asking RM {axisLabel(asking)}
+          </span>
+          <span className={styles.legendItem} role="listitem">
+            <span className={[styles.swatch, styles.limitSwatch].join(" ")} aria-hidden="true" />
+            Your limit RM {axisLabel(limit)}
+          </span>
+          {sellerAsks.length > 0 && (
+            <span className={styles.legendItem} role="listitem">
+              <span className={[styles.swatch, styles.sellerSwatch].join(" ")} aria-hidden="true" />
+              Seller asks
+            </span>
+          )}
+          {ourOffers.length > 0 && (
+            <span className={styles.legendItem} role="listitem">
+              <span className={[styles.swatch, styles.offerSwatch].join(" ")} aria-hidden="true" />
+              Our offers
+            </span>
+          )}
+          {dealPrice != null && (
+            <span className={styles.legendItem} role="listitem">
+              <span className={[styles.swatch, styles.dealSwatch].join(" ")} aria-hidden="true" />
+              Deal RM {axisLabel(dealPrice)}
+            </span>
+          )}
+        </div>
+      </div>
+      <svg ref={svgRef} className={styles.svg} viewBox={`0 0 590 264`} aria-hidden="true">
         {/* Gridlines */}
         {uniqTicks.map((tick) => {
           const y = yFor(tick, ymin, ymax);
@@ -165,12 +196,6 @@ export function PriceLadder({ trace, asking, limit, dealPrice }: PriceLadderProp
               y1={yFor(limit, ymin, ymax)}
               y2={yFor(limit, ymin, ymax)}
             />
-            <text className={styles.referenceLabel} x={PLOT_RIGHT + 6} y={yFor(asking, ymin, ymax)}>
-              Asking RM {axisLabel(asking)}
-            </text>
-            <text className={styles.referenceLabel} x={PLOT_RIGHT + 6} y={yFor(limit, ymin, ymax)}>
-              Your limit RM {axisLabel(limit)}
-            </text>
           </>
         )}
         {/* Y axis labels */}
@@ -194,30 +219,14 @@ export function PriceLadder({ trace, asking, limit, dealPrice }: PriceLadderProp
         {offerPoints.map((pt, i) => (
           <circle key={`offer-${i}`} className={styles.offerDot} cx={pt.x} cy={pt.y} r={3} />
         ))}
-        {/* Direct labels */}
-        {sellerPoints.length > 0 && (
-          <text className={styles.directLabel} x={sellerPoints[0].x - 10} y={sellerPoints[0].y - 6} textAnchor="end">
-            Seller asks
-          </text>
-        )}
-        {offerPoints.length > 0 && (
-          <text className={styles.directLabel} x={offerPoints[0].x + 8} y={offerPoints[0].y - 6}>
-            Our offers
-          </text>
-        )}
         {/* Deal marker */}
         {dealPrice != null && maxRound > 0 && (
-          <>
-            <circle
-              className={styles.dealDot}
-              cx={xFor(maxRound, maxRound)}
-              cy={yFor(dealPrice, ymin, ymax)}
-              r={5}
-            />
-            <text className={styles.dealLabel} x={xFor(maxRound, maxRound)} y={yFor(dealPrice, ymin, ymax) - 10}>
-              Deal RM {axisLabel(dealPrice)}
-            </text>
-          </>
+          <circle
+            className={styles.dealDot}
+            cx={xFor(maxRound, maxRound)}
+            cy={yFor(dealPrice, ymin, ymax)}
+            r={5}
+          />
         )}
         {/* X axis labels */}
         {ourOffers.length > 0 &&
@@ -226,10 +235,6 @@ export function PriceLadder({ trace, asking, limit, dealPrice }: PriceLadderProp
               {p.round}
             </text>
           ))}
-        {/* Unit */}
-        <text className={styles.unit} x={PLOT_LEFT - 8} y={PLOT_TOP - 6}>
-          RM
-        </text>
       </svg>
       <table className={styles.dataTable} aria-label="Price ladder data">
         <caption>Price ladder</caption>

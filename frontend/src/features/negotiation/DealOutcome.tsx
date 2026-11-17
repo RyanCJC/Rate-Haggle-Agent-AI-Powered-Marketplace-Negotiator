@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { Card } from "../../ui/card/card";
 import { Button } from "../../ui/button/button";
 import { savings, pickupLine } from "../../lib/format";
+import { describeSlot, pickupSectionState } from "../../lib/pickup";
 import type { Snapshot } from "../../types";
+import { PickupCoordinator } from "./PickupCoordinator";
 import styles from "./dealOutcome.module.css";
 
 export interface DealOutcomeProps {
@@ -11,6 +13,8 @@ export interface DealOutcomeProps {
   dealPrice: number | null;
   onHome: () => void;
   copilot?: boolean;
+  refreshSnapshot?: () => Promise<Snapshot | null>;
+  onArrangePickup?: () => void;
 }
 
 interface DealReceiptProps {
@@ -19,6 +23,8 @@ interface DealReceiptProps {
   dealPrice: number;
   onHome: () => void;
   copilot: boolean;
+  refreshSnapshot: () => Promise<Snapshot | null>;
+  onArrangePickup: () => void;
 }
 
 interface DealCalmProps {
@@ -26,18 +32,45 @@ interface DealCalmProps {
   onHome: () => void;
 }
 
-export function DealOutcome({ snapshot, asking, dealPrice, onHome, copilot = false }: DealOutcomeProps) {
+export function DealOutcome({
+  snapshot,
+  asking,
+  dealPrice,
+  onHome,
+  copilot = false,
+  refreshSnapshot = async () => null,
+  onArrangePickup = () => {},
+}: DealOutcomeProps) {
   const { outcome, final_price } = snapshot;
 
   if (outcome === "deal" && dealPrice != null && final_price != null) {
-    return <DealReceipt snapshot={snapshot} asking={asking} dealPrice={dealPrice} onHome={onHome} copilot={copilot} />;
+    return (
+      <DealReceipt
+        snapshot={snapshot}
+        asking={asking}
+        dealPrice={dealPrice}
+        onHome={onHome}
+        copilot={copilot}
+        refreshSnapshot={refreshSnapshot}
+        onArrangePickup={onArrangePickup}
+      />
+    );
   }
 
   return <DealCalm snapshot={snapshot} onHome={onHome} />;
 }
 
-function DealReceipt({ snapshot, asking, dealPrice, onHome, copilot }: DealReceiptProps) {
+function DealReceipt({
+  snapshot,
+  asking,
+  dealPrice,
+  onHome,
+  copilot,
+  refreshSnapshot,
+  onArrangePickup,
+}: DealReceiptProps) {
   const { final_price, pickup, approvals } = snapshot;
+  const copilotPickup = pickupSectionState(snapshot) !== "hidden";
   const saved = savings(String(asking), final_price);
   const [copied, setCopied] = useState(false);
 
@@ -63,7 +96,7 @@ function DealReceipt({ snapshot, asking, dealPrice, onHome, copilot }: DealRecei
     <section className={styles.outcome}>
       <Card padding="lg" className={[styles.card, styles.receipt].filter(Boolean).join(" ")}>
         <h2 className={styles.title}>Deal agreed</h2>
-        <p className={styles.price}>
+        <p className={[styles.price, copilot && styles.copilotPrice].filter(Boolean).join(" ")}>
           RM <span className={styles.priceNumber}>{Number(dealPrice).toLocaleString()}</span>
         </p>
         {saved && (
@@ -73,11 +106,29 @@ function DealReceipt({ snapshot, asking, dealPrice, onHome, copilot }: DealRecei
         )}
         <hr className={styles.perforation} />
         <p className={styles.pickup}>
-          {copilot ? "Next: agree a pickup time with the seller." : pickup ? pickupLine(pickup) : "Pickup not booked."}
+          {copilot && pickup?.status === "booked" && pickup.start_at
+            ? `Pickup booked: ${describeSlot(pickup.start_at)} (Malaysia time)`
+            : copilot
+              ? "Next: agree a pickup time with the seller."
+              : pickup
+                ? pickupLine(pickup)
+                : "Pickup not booked."}
         </p>
         <p className={styles.approvals}>
           {approvals.length ? "You approved the close." : "Agreement recorded."}
         </p>
+        {copilotPickup && !pickup && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.arrangeLink}
+            onClick={onArrangePickup}
+            data-testid="deal-arrange-pickup"
+          >
+            Arrange pickup
+          </Button>
+        )}
         <Button
           variant="ghost"
           onClick={handleCopy}
@@ -86,6 +137,13 @@ function DealReceipt({ snapshot, asking, dealPrice, onHome, copilot }: DealRecei
           {copied ? "Copied" : "Copy summary"}
         </Button>
       </Card>
+      {copilotPickup && (
+        <PickupCoordinator
+          runId={snapshot.id}
+          snapshot={snapshot}
+          refreshSnapshot={refreshSnapshot}
+        />
+      )}
       <Button variant="primary" onClick={onHome} className={styles.continueButton}>
         Back to home
       </Button>

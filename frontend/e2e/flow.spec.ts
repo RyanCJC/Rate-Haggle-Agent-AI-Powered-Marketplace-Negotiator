@@ -193,6 +193,27 @@ async function assertHomeStyling(page: Page): Promise<void> {
   const radioWrapper = page.locator("label").filter({ has: page.getByRole("radio") }).first();
   const borderRadius = await radioWrapper.evaluate((el) => getComputedStyle(el).borderRadius);
   expect(parseFloat(borderRadius)).toBeGreaterThan(0);
+
+  // Section headings: at least var(--space-8) above and var(--space-3) below
+  const headings = page.locator("h2").filter({ hasText: /The (listing|seller|agent|control|recent)/ });
+  for (const heading of await headings.all()) {
+    const marginTop = await heading.evaluate((el) => parseFloat(getComputedStyle(el).marginTop || "0"));
+    const marginBottom = await heading.evaluate((el) => parseFloat(getComputedStyle(el).marginBottom || "0"));
+    expect(marginTop).toBeGreaterThanOrEqual(15); // var(--space-8) = 16px
+    expect(marginBottom).toBeGreaterThanOrEqual(11); // var(--space-3) = 12px
+  }
+
+  // Style choices in a 3-column grid, control options in a 2-column grid
+  const styleChoices = page.locator(".styleChoices");
+  if (await styleChoices.count() > 0) {
+    const grid = await styleChoices.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+    expect(grid.split(" ").filter((v) => v === "1fr").length).toBeGreaterThanOrEqual(3);
+  }
+  const controlChoices = page.locator(".controlChoices");
+  if (await controlChoices.count() > 0) {
+    const grid = await controlChoices.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+    expect(grid.split(" ").filter((v) => v === "1fr").length).toBeGreaterThanOrEqual(2);
+  }
 }
 
 test.describe("flow", () => {

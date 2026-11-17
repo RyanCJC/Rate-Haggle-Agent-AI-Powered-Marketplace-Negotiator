@@ -37,6 +37,10 @@
   line-height: 1.1;
 }
 
+.copilotPrice .priceNumber {
+  color: var(--color-warning-text);
+}
+
 .savings {
   margin: 0 0 var(--space-4) 0;
   font-size: var(--text-sm);
@@ -64,6 +68,12 @@
 
 .copyButton {
   margin: 0;
+}
+
+.arrangeLink {
+  margin: 0 0 var(--space-3);
+  padding-left: 0;
+  color: var(--color-primary);
 }
 
 .continueButton {

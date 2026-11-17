@@ -13,12 +13,15 @@ export function useNegotiation(runId: string) {
   const [epoch, setEpoch] = useState(0);
   const timer = useRef<number | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<Snapshot | null> => {
     try {
-      setSnapshot(await getRun(runId));
+      const current = await getRun(runId);
+      setSnapshot(current);
       setError(null);
+      return current;
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : String(problem));
+      return null;
     }
   }, [runId]);
 

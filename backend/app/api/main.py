@@ -5,7 +5,7 @@ import time
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
@@ -13,8 +13,8 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.app.api.runs import PgRuns
-from backend.app.api.schemas import Decision, Reply, StartRequest
-from backend.app.api.service import Conflict, NotFound, Rejected, Service
+from backend.app.api.schemas import Decision, Pickup, Reply, StartRequest
+from backend.app.api.service import Conflict, NotFound, Rejected, Service, Unavailable
 from backend.app.boundaries.calendar_port import McpCalendarPort
 from backend.app.boundaries.session import McpSession
 from backend.app.llm.client import LLMClient
@@ -36,6 +36,8 @@ def call(fn, *args):
         raise HTTPException(409, str(error)) from None
     except Rejected as error:
         raise HTTPException(422, error.messages) from None
+    except Unavailable as error:
+        raise HTTPException(503, str(error)) from None
 
 
 def sse(name: str, data, event_id: int | None = None) -> str:
@@ -153,6 +155,18 @@ def create_app(
         call(request.app.state.service.stop_run, run_id)
         return {"accepted": True}
 
+    @app.get("/negotiations/{run_id}/pickup/options")
+    def pickup_options(run_id: str, request: Request, count: int = Query(5, ge=1, le=8)):
+        return call(request.app.state.service.pickup_options, run_id, count)
+
+    @app.post("/negotiations/{run_id}/pickup")
+    def book_pickup(run_id: str, body: Pickup, request: Request):
+        return call(request.app.state.service.book_pickup, run_id, body.start_at)
+
+    @app.delete("/negotiations/{run_id}/pickup")
+    def cancel_pickup(run_id: str, request: Request):
+        return call(request.app.state.service.cancel_pickup, run_id)
+    
     @app.get("/negotiations/{run_id}/events")
     async def events(run_id: str, request: Request):
         svc = request.app.state.service

@@ -30,6 +30,20 @@ export interface Pickup {
   detail?: string;
 }
 
+export interface BookedPickup {
+  status: "booked";
+  start_at: string;
+}
+
+export interface PickupOptions {
+  slots: string[];
+  labels: string[];
+  message: string | null;
+  pickup: BookedPickup | null;
+}
+
+export type CancelPickupResult = { status: "cancelled" | "not_found" };
+
 export interface TraceEntry {
   node: string;
   [key: string]: unknown;
