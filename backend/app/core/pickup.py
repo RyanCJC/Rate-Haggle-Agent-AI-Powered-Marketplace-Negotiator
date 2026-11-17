@@ -3,6 +3,12 @@ from decimal import Decimal
 
 from .calendar_rules import MYT
 
+HOUR_WINDOWS = {
+    "any": range(10, 20),
+    "morning": range(10, 12),
+    "afternoon": range(12, 17),
+    "evening": range(17, 20),
+}
 
 def _clock(local: datetime) -> str:
     hour = local.hour % 12 or 12
@@ -33,3 +39,14 @@ def pickup_message(price: Decimal, slots: list[str]) -> str | None:
         f"Great, RM {amount} it is. Could we do pickup on {when}? "
         "Let me know which time works for you."
     )
+
+
+def prefer_hours(slots: list[str], window: str, count: int) -> list[str]:
+    """Slots inside the preferred time of day first, topped up with the earliest others when
+    there are not enough, returned in time order. Never returns fewer than it was given room for."""
+    hours = HOUR_WINDOWS.get(window, HOUR_WINDOWS["any"])
+    inside = [s for s in slots if datetime.fromisoformat(s).astimezone(MYT).hour in hours]
+    chosen = inside[:count]
+    if len(chosen) < count:
+        chosen += [s for s in slots if s not in chosen][: count - len(chosen)]
+    return sorted(chosen, key=datetime.fromisoformat)

@@ -1,12 +1,13 @@
-﻿import { useCallback, useState, type FormEvent } from "react";
-import { startRun } from "../../api";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { getPreferences, getSimilar, startRun } from "../../api";
 import { Button } from "../../ui/button/button";
 import { Card } from "../../ui/card/card";
 import { Badge } from "../../ui/badge/badge";
 import { formatRm } from "../../lib/format";
 import { marketCheck, parseComparables } from "../../lib/listing";
+import { dealSummary, formatMatch, shouldShowSimilarDeals } from "../../lib/memory";
 import { MarketCheckCard } from "../listing/MarketCheckCard";
-import type { Autonomy, ListingCategory, Mode, Style } from "../../types";
+import type { Autonomy, Deal, ListingCategory, Mode, Style } from "../../types";
 import styles from "./home.module.css";
 
 const PERSONAS = [
@@ -94,6 +95,8 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
   const [mode, setMode] = useState<Mode>("simulate");
   const [persona, setPersona] = useState("flexible");
   const [style, setStyle] = useState<Style>("balanced");
+  const [similarDeals, setSimilarDeals] = useState<Deal[]>([]);
+  const [similarFor, setSimilarFor] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("approve_close");
   const [itemTitle, setItemTitle] = useState("");
   const [sellerOpening, setSellerOpening] = useState("");
@@ -103,6 +106,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ asking?: string; budget?: string }>({});
+  const styleTouched = useRef(false);
 
   const askingN = Number(asking);
   const budgetN = Number(budget);
@@ -111,12 +115,58 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
   const valid = askingValid && budgetValid;
   const budgetAtOrAboveAsking = valid && budgetN >= askingN;
   const isCopilot = mode === "copilot";
+  const similarKey = `${category}\u0000${itemTitle.trim()}`;
+  const showSimilarDeals =
+    similarFor === similarKey && shouldShowSimilarDeals(mode, itemTitle, similarDeals);
   const comparables = parseComparables(comparablesText);
   const market = !comparables.error && valid
     ? marketCheck(comparables.prices, askingN, budgetN)
     : null;
 
   const recents = readRecents();
+
+  useEffect(() => {
+    let active = true;
+    void getPreferences()
+      .then((preferences) => {
+        if (active && !styleTouched.current && preferences.style) setStyle(preferences.style);
+      })
+      .catch(() => {
+        // The form remains available when profile memory is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setSimilarDeals([]);
+    setSimilarFor("");
+    if (!isCopilot || itemTitle.trim().length < 3) return;
+
+    const controller = new AbortController();
+    const title = itemTitle.trim();
+    const key = `${category}\u0000${title}`;
+    const timeout = window.setTimeout(() => {
+      void getSimilar(title, category, controller.signal)
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setSimilarDeals(result.deals.slice(0, 3));
+          setSimilarFor(key);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSimilarDeals([]);
+            setSimilarFor(key);
+          }
+        });
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [category, isCopilot, itemTitle]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent) => {
@@ -319,13 +369,6 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
                   {comparables.error}
                 </p>
               )}
-              {market && (
-                <MarketCheckCard
-                  prices={comparables.prices}
-                  asking={askingN}
-                  limit={budgetN}
-                />
-              )}
             </>
           )}
           {budgetAtOrAboveAsking && (
@@ -379,7 +422,12 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
               const selected = style === s.value;
               return (
                 <label key={s.value} className={styles.radioCard}>
-                  <input {...choiceProps("agent-style", selected, () => setStyle(s.value))} />
+                  <input
+                    {...choiceProps("agent-style", selected, () => {
+                      styleTouched.current = true;
+                      setStyle(s.value);
+                    })}
+                  />
                   <span>
                     <strong>{s.label}</strong>
                     <span className={styles.hint}>{s.hint}</span>
@@ -423,6 +471,35 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
       </form>
 
       <aside className={styles.aside}>
+        {market && (
+          <MarketCheckCard
+            prices={comparables.prices}
+            asking={askingN}
+            limit={budgetN}
+          />
+        )}
+        {showSimilarDeals && (
+          <Card
+            padding="lg"
+            className={styles.similarDeals}
+            aria-label="Similar past deals"
+            data-testid="similar-past-deals"
+          >
+            <h2 className={styles.asideTitle}>Similar past deals</h2>
+            <p className={styles.similarNote}>
+              Matched by wording from your earlier Copilot negotiations.
+            </p>
+            <ul className={styles.similarList}>
+              {similarDeals.map((deal) => (
+                <li key={deal.run_id} data-testid="similar-past-deal">
+                  <strong>{deal.item_title || "Untitled item"}</strong>
+                  <span>{dealSummary(deal)}</span>
+                  <span className={styles.similarMatch}>{formatMatch(deal.similarity)}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         <Card padding="lg">
           <h2 className={styles.asideTitle}>What happens next</h2>
           <ol className={styles.timeline}>

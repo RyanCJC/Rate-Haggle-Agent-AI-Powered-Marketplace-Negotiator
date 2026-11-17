@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { bookPickup, cancelPickup, getPickupOptions } from "../../api";
-import type { BookedPickup, PickupOptions, Snapshot } from "../../types";
+import { bookPickup, cancelPickup, getPickupOptions, getPreferences } from "../../api";
+import type { BookedPickup, PickupOptions, Preferences, Snapshot } from "../../types";
 import { Button } from "../../ui/button/button";
 import { Card } from "../../ui/card/card";
 import { Icon } from "../../ui/icon/icon";
@@ -57,11 +57,26 @@ export function PickupCoordinator({ runId, snapshot, refreshSnapshot }: PickupCo
   const [hour, setHour] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [profilePreferences, setProfilePreferences] = useState<Preferences | null>(null);
   const busyRef = useRef(false);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const errorId = "pickup-error";
   const describedBy = errorMessages.length > 0 ? errorId : undefined;
   const minDate = useRef(minimumPickupDate()).current;
+
+  useEffect(() => {
+    let active = true;
+    void getPreferences()
+      .then((preferences) => {
+        if (active) setProfilePreferences(preferences);
+      })
+      .catch(() => {
+        // Pickup hints are optional; the coordinator itself remains unchanged.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const textarea = messageRef.current;
@@ -199,6 +214,14 @@ export function PickupCoordinator({ runId, snapshot, refreshSnapshot }: PickupCo
       data-testid="pickup-coordinator"
     >
       <h2 id="pickup-title">Arrange pickup</h2>
+      {profilePreferences?.pickup_hours !== undefined && profilePreferences.pickup_hours !== "any" && (
+        <p className={styles.preferenceHint}>
+          Showing your {profilePreferences.pickup_hours} times first.
+        </p>
+      )}
+      {profilePreferences?.pickup_area && (
+        <p className={styles.preferenceHint}>Your usual pickup area: {profilePreferences.pickup_area}.</p>
+      )}
       {pickup ? (
         <Card padding="md" className={styles.bookedCard} data-testid="pickup-booked-card">
           <h3>Pickup booked</h3>

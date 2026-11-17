@@ -7,8 +7,7 @@
 }
 
 .conversationCopilot {
-  max-height: 44vh;
-  overflow: auto;
+  min-height: 0;
   padding: var(--space-4);
   border: var(--elev-1);
   border-radius: var(--radius-lg);

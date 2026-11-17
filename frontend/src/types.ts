@@ -8,6 +8,7 @@ export type Status =
 export type Mode = "simulate" | "copilot";
 export type Autonomy = "auto" | "approve_close";
 export type Style = "aggressive" | "balanced" | "safe";
+export type PickupHours = "any" | "morning" | "afternoon" | "evening";
 export type Theme = "system" | "light" | "dark";
 export type ListingCategory = "monitors" | "phones" | "laptops" | "other";
 export type FactStatus = "confirmed" | "claimed" | "conflicting" | "missing";
@@ -77,6 +78,35 @@ export interface Snapshot {
   seller_prices: string[];
   trace: TraceEntry[];
   facts: ItemFact[];
+  memory_notes?: string[];
+}
+
+export interface Preferences {
+  style: Style | null;
+  pickup_hours: PickupHours;
+  pickup_area: string | null;
+}
+
+export type DealOutcome =
+  | "deal"
+  | "we_walk"
+  | "seller_walks"
+  | "extraction_miss"
+  | "timeout"
+  | "user_declined"
+  | "user_stopped";
+
+export interface Deal {
+  run_id: string;
+  item_title: string;
+  category: ListingCategory | null;
+  asking: string;
+  final_price: string | null;
+  outcome: DealOutcome;
+  mode: "copilot";
+  rounds: number;
+  created_at: string;
+  similarity: number | null;
 }
 
 export interface StartBody {

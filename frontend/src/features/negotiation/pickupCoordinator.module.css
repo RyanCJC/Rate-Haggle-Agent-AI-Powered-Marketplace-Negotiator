@@ -29,6 +29,11 @@
   line-height: var(--text-sm-lh);
 }
 
+.preferenceHint {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
 .options,
 .messageBlock {
   display: flex;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Home } from "./features/home/Home";
 import { Workspace } from "./features/negotiation/Workspace";
 import { TopBar } from "./components/shell/TopBar";
+import { ProfilePage } from "./features/profile/ProfilePage";
 import type { Mode } from "./types";
 
 function readRun(): string | null {
@@ -9,13 +10,19 @@ function readRun(): string | null {
   return match ? match[1] : null;
 }
 
+function isProfileRoute(): boolean {
+  return window.location.hash === "#/profile";
+}
+
 export default function App() {
   const [runId, setRunId] = useState<string | null>(readRun);
+  const [profileRoute, setProfileRoute] = useState(isProfileRoute);
   const [mode, setMode] = useState<Mode | null>(null);
 
   useEffect(() => {
     const onHash = () => {
       setRunId(readRun());
+      setProfileRoute(isProfileRoute());
       setMode(null);
     };
     window.addEventListener("hashchange", onHash);
@@ -24,9 +31,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar mode={runId ? mode : null} />
+      <TopBar mode={runId ? mode : null} activePage={profileRoute ? "profile" : null} />
       <main className="app__main">
-        {runId ? (
+        {profileRoute ? (
+          <ProfilePage />
+        ) : runId ? (
           <Workspace
             runId={runId}
             onHome={() => (window.location.hash = "")}

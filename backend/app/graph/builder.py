@@ -88,6 +88,8 @@ def run_graph(
     thread_id: str | None = None,
     listing: dict | None = None,
     comparables: list | None = None,
+    memory_notes: list[str] | None = None,
+    memory_prices: list | None = None,
 ):
     state = initial_state(
         Decimal(asking),
@@ -97,5 +99,7 @@ def run_graph(
         listing,
         comparables,
         run_id=thread_id,
+        memory_notes=memory_notes,
+        memory_prices=memory_prices,
     )
     return graph.invoke(state, config=make_config(thread_id))

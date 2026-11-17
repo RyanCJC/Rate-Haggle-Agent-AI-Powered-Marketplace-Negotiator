@@ -3,6 +3,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import fs from "node:fs";
 import path from "node:path";
 import { recordRun, runIdFromUrl } from "./helpers";
+import { recordAndCleanupProfile } from "./profile-registry";
 
 const errorsByPage = new WeakMap<Page, string[]>();
 
@@ -114,6 +115,7 @@ test.describe("Copilot mode", () => {
   test.afterEach(async ({ page }) => {
     const id = runIdFromUrl(page);
     if (id) recordRun(id);
+    await recordAndCleanupProfile(page);
     expect(errorsByPage.get(page) ?? [], "browser console and page errors").toEqual([]);
   });
 

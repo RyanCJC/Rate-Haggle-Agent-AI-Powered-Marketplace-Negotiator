@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.models import NegotiationContext
 from backend.app.core.strategy import StrategyDecision
+from backend.app.memory.context import MEMORY_HEADER
 
 from .client import LLMClient
 from .untrusted import UNTRUSTED_NOTE, wrap_untrusted, wrap_untrusted_inline
@@ -124,6 +125,7 @@ def build_compose_prompt(
     seller_probed: bool = False,
     feedback: str = "",
     facts: list[dict] | None = None,
+    memory_notes: list[str] | None = None,
 ) -> tuple[str, str]:
     """Build the prompt. Only public information goes in: never the budget or decision.reason."""
     system = f"{COMPOSE_SYSTEM}\n{STYLE_HINTS[style]}"
@@ -143,6 +145,9 @@ def build_compose_prompt(
     )
     if feedback:
         lines.append(f"Your previous draft was rejected: {feedback} Fix it.")
+    if memory_notes:  # code-built, numbers only: nothing untrusted can be in these lines
+        lines.append(MEMORY_HEADER)
+        lines.extend(memory_notes)
     lines.append("Write the next buyer message.")
     return system, "\n".join(lines)
 
@@ -156,8 +161,9 @@ def compose_message(
     seller_probed: bool = False,
     feedback: str = "",
     facts: list[dict] | None = None,
+    memory_notes: list[str] | None = None,
 ) -> Draft:
     system, user = build_compose_prompt(
-        decision, ctx, history, style, seller_probed, feedback, facts
+        decision, ctx, history, style, seller_probed, feedback, facts, memory_notes
     )
     return llm.complete_json(system, user, Draft, task="compose")

@@ -4,8 +4,9 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+import psycopg
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
@@ -19,6 +20,8 @@ from backend.app.boundaries.calendar_port import McpCalendarPort
 from backend.app.boundaries.session import McpSession
 from backend.app.llm.client import LLMClient
 from backend.app.llm.fake import RuleBasedLLM
+from backend.app.memory.models import Preferences, check_profile_id
+from backend.app.memory.store import PgMemory
 from backend.app.sim.personas import get_persona
 
 CALENDAR = "backend.app.boundaries.calendar_server"
@@ -39,6 +42,25 @@ def call(fn, *args):
     except Unavailable as error:
         raise HTTPException(503, str(error)) from None
 
+def profile_of(value: str | None) -> str:
+    try:
+        return check_profile_id(value or "")
+    except ValueError:
+        raise HTTPException(422, "send a valid X-Profile-Id header") from None
+
+
+def memory_of(request: Request):
+    memory = request.app.state.service.memory
+    if memory is None:
+        raise HTTPException(503, "profile memory is not enabled")
+    return memory
+
+
+def stored(fn, *args):
+    try:
+        return fn(*args)
+    except psycopg.Error:
+        raise HTTPException(503, "profile memory is unavailable") from None
 
 def sse(name: str, data, event_id: int | None = None) -> str:
     head = f"id: {event_id}\n" if event_id is not None else ""
@@ -91,6 +113,7 @@ def create_app(
                 McpCalendarPort(session),
                 PgRuns(url),
                 llm_factory=LLMClient if live else RuleBasedLLM,
+                memory=PgMemory(url),
             )
             yield
 
@@ -104,7 +127,10 @@ def create_app(
         return {"ok": True}
 
     @app.post("/negotiations", status_code=201)
-    def start(body: StartRequest, request: Request):
+    def start(
+        body: StartRequest, request: Request, x_profile_id: str | None = Header(default=None)
+    ):
+        profile_id = profile_of(x_profile_id) if x_profile_id else None
         copilot = body.mode == "copilot"
         if not copilot:  # a copilot run has a real seller, so the persona is ignored
             try:
@@ -128,6 +154,7 @@ def create_app(
                 if copilot and body.comparables
                 else None
             ),
+            "profile_id": profile_id if copilot else None,
         }
         return {"id": request.app.state.service.start(config)}
 
@@ -178,6 +205,48 @@ def create_app(
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
+
+    @app.get("/profile/preferences")
+    def get_preferences(request: Request, x_profile_id: str | None = Header(default=None)):
+        pid = profile_of(x_profile_id)
+        return stored(memory_of(request).get_preferences, pid).model_dump()
+
+    @app.put("/profile/preferences")
+    def put_preferences(
+        body: Preferences, request: Request, x_profile_id: str | None = Header(default=None)
+    ):
+        pid = profile_of(x_profile_id)
+        return stored(memory_of(request).set_preferences, pid, body).model_dump()
+
+    @app.get("/profile/deals")
+    def list_deals(request: Request, x_profile_id: str | None = Header(default=None)):
+        pid = profile_of(x_profile_id)
+        deals = stored(memory_of(request).list_deals, pid, 50)
+        return {"deals": [deal.public() for deal in deals]}
+
+    @app.get("/profile/similar")
+    def similar_deals(
+        request: Request,
+        title: str = Query("", max_length=120),
+        category: str | None = Query(None, max_length=20),
+        x_profile_id: str | None = Header(default=None),
+    ):
+        pid = profile_of(x_profile_id)
+        memory = memory_of(request)
+        if not title.strip():
+            return {"deals": []}
+        deals = stored(memory.similar_deals, pid, title, category or None, 3)
+        return {"deals": [deal.public() for deal in deals]}
+
+    @app.delete("/profile/deals/{run_id}")
+    def forget_deal(run_id: str, request: Request, x_profile_id: str | None = Header(default=None)):
+        pid = profile_of(x_profile_id)
+        return {"removed": stored(memory_of(request).forget_deal, pid, run_id)}
+
+    @app.delete("/profile")
+    def clear_profile(request: Request, x_profile_id: str | None = Header(default=None)):
+        pid = profile_of(x_profile_id)
+        return {"removed": stored(memory_of(request).clear, pid)}
 
     return app
 

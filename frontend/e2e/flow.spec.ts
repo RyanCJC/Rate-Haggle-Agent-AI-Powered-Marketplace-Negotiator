@@ -5,6 +5,7 @@ import {
   recordRun,
   shot,
 } from "./helpers";
+import { recordAndCleanupProfile } from "./profile-registry";
 
 const pageErrors = new WeakMap<Page, string[]>();
 const realConsoleErrors = new WeakMap<Page, string[]>();
@@ -227,6 +228,7 @@ test.describe("flow", () => {
     if (id) {
       recordRun(id);
     }
+    await recordAndCleanupProfile(page);
     const real = [...(pageErrors.get(page) ?? []), ...(realConsoleErrors.get(page) ?? [])];
     const network = networkErrors.get(page) ?? [];
     if (network.length > 0) {

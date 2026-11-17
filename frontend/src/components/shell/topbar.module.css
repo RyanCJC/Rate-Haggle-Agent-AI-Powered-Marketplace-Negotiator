@@ -30,3 +30,13 @@
   gap: var(--space-3);
 }
 
+.topbar__link {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.topbar__link:hover,
+.topbar__linkActive {
+  color: var(--color-primary);
+}

@@ -1,0 +1,243 @@
+.profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+.header h1,
+.header p,
+.section h2,
+.section p {
+  margin: 0;
+}
+
+.header h1 {
+  font-size: var(--text-2xl);
+  letter-spacing: -0.01em;
+}
+
+.header p {
+  max-width: 76ch;
+  margin-top: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-lh);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.section h2 {
+  font-size: var(--text-lg);
+}
+
+.choiceGroup {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choiceGroup legend {
+  margin-bottom: var(--space-2);
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.choiceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 140px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.choice input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--color-primary);
+}
+
+.choice small {
+  display: block;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.areaLabel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: min(100%, 480px);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.areaLabel input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.helper,
+.meta,
+.empty {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.saved {
+  color: var(--color-success-text);
+  font-size: var(--text-sm);
+}
+
+.error {
+  width: auto;
+  max-width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.error p + p {
+  margin-top: var(--space-1);
+}
+
+.saveActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.saveActions .error {
+  width: auto;
+}
+
+.dealList {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dealRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: var(--elev-1);
+}
+
+.dealDetails {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.dealTitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dealTitle strong {
+  overflow-wrap: anywhere;
+}
+
+.dealBadge {
+  color: var(--color-success-text);
+}
+
+.untitled {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.summary {
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+}
+
+.meta {
+  font-size: var(--text-xs);
+}
+
+.inlineConfirm,
+.clearConfirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.clearConfirm p {
+  flex-basis: 100%;
+}
+
+.unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--color-ink);
+}
+
+.unavailable p {
+  margin: 0;
+}
+
+.loading {
+  width: min(100%, 980px);
+  margin: var(--space-6) auto;
+  padding: var(--space-4);
+  color: var(--color-muted);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}

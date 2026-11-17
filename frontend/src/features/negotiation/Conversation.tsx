@@ -30,11 +30,12 @@ export function Conversation({ history, typing, pendingDraft, copilot = false }:
               key={index}
               className={[styles.message, role === "buyer" ? styles.messageBuyer : styles.messageSeller].filter(Boolean).join(" ")}
               style={{ animationDelay: `${index * 40}ms` }}
+              data-testid="conversation-message"
             >
               <div className={avatar.className} aria-hidden="true">
                 {avatar.label}
               </div>
-              <div className={styles.bubble}>
+              <div className={styles.bubble} data-testid="conversation-bubble">
                 <p className={styles.text}>{text}</p>
               </div>
             </div>

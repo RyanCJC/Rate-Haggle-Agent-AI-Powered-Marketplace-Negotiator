@@ -85,6 +85,17 @@ export function CopilotItemPanel({ snapshot }: CopilotItemPanelProps) {
           })}
         </div>
       </div>
+      {snapshot.memory_notes && snapshot.memory_notes.length > 0 && (
+        <Card padding="md" className={styles.historyCard} data-testid="item-memory-notes">
+          <h2>From your history</h2>
+          <ul>
+            {snapshot.memory_notes.map((note, index) => (
+              <li key={`${note}-${index}`}>{note.replace(/^-\s*/, "")}</li>
+            ))}
+          </ul>
+          <p>Used for tone only. Never shared with the seller.</p>
+        </Card>
+      )}
       {hasMarketCheck && (
         <MarketCheckCard
           prices={prices}

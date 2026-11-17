@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describeSlot } from "../src/lib/pickup";
 import { recordRun, runIdFromUrl } from "./helpers";
+import { recordAndCleanupProfile } from "./profile-registry";
 
 const errorsByPage = new WeakMap<Page, string[]>();
 
@@ -155,6 +156,7 @@ test.describe("Copilot pickup coordination", () => {
   test.afterEach(async ({ page }) => {
     const id = runIdFromUrl(page);
     if (id) recordRun(id);
+    await recordAndCleanupProfile(page);
     expect(errorsByPage.get(page) ?? [], "browser console and page errors").toEqual([]);
   });
 
@@ -233,7 +235,9 @@ test.describe("Copilot pickup coordination", () => {
 
     await page.getByTestId("pickup-slot-button-0").click();
     await expect(page.getByTestId("pickup-booked-card")).toContainText(label!);
-    await peer.getByTestId("pickup-propose").click();
+    await peer.reload();
+    await assertLight(peer);
+    await peer.getByRole("tab", { name: "Deal" }).click();
     await expect(peer.getByTestId("pickup-booked-card")).toContainText(label!);
     expect(peerErrors).toEqual([]);
     await peer.close();

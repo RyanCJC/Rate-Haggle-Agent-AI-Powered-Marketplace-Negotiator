@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 from backend.app.core.calendar_rules import to_myt_iso
-from backend.app.core.pickup import describe_slot, pickup_message
+from backend.app.core.pickup import describe_slot, pickup_message, prefer_hours
 from backend.app.graph.builder import build_graph, make_config, run_graph
 from backend.app.graph.control import (
     approve,
@@ -18,6 +18,8 @@ from backend.app.graph.manual import ManualSellerPort
 from backend.app.graph.nodes import check_draft, context, decision_of
 from backend.app.graph.ports import CalendarError, SimSellerPort
 from backend.app.llm.fake import RuleBasedLLM
+from backend.app.memory.context import memory_notes
+from backend.app.memory.models import DealRecord
 from backend.app.sim.personas import get_persona
 from backend.app.sim.seller import SimSeller
 
@@ -58,10 +60,14 @@ class Service:
     """Runs negotiations in the background. All state lives in the checkpointer and the
     runs store, never in this object, so a restarted server loses nothing."""
 
-    def __init__(self, saver, calendar, runs, llm_factory=RuleBasedLLM, workers: int = 8):
+    def __init__(
+        self, saver, calendar, runs, llm_factory=RuleBasedLLM, workers: int = 8, memory=None
+    ):
         self.saver = saver
         self.calendar = calendar
         self.runs = runs
+        self.memory = memory  # profile memory (optional): remembers finished copilot deals
+        self.memory_failures = 0  # memory trouble is counted, never allowed to fail a run
         self.llm = llm_factory()
         self._pool = ThreadPoolExecutor(max_workers=workers)
         self._guard = threading.Lock()
@@ -123,14 +129,17 @@ class Service:
     # -- pickup (copilot) -------------------------------------------------------------------
     def pickup_options(self, run_id: str, count: int = 5) -> dict:
         """Free slots plus a ready-to-send message for the seller. Code writes the message."""
-        _, values = self._deal_state(run_id)
+        config, values = self._deal_state(run_id)
         booked = values.get("pickup")
         if booked and booked.get("status") == "booked":
             return {"slots": [], "labels": [], "message": None, "pickup": booked}
+        window = self._pickup_hours(config)
         try:
-            slots = self.calendar.propose_slots(count)
+            # With a time-of-day preference, look at more free slots so preferred ones are found.
+            slots = self.calendar.propose_slots(count if window == "any" else min(count * 3, 24))
         except CalendarError as error:
             raise Unavailable("the calendar is unavailable, try again") from error
+        slots = prefer_hours(slots, window, count)
         return {
             "slots": slots,
             "labels": [describe_slot(s) for s in slots],
@@ -208,7 +217,8 @@ class Service:
             "our_offers": [str(p) for p in values.get("our_offers", [])],
             "seller_prices": [str(p) for p in values.get("seller_prices", [])],
             "trace": values.get("trace", []),
-             "facts": values.get("facts", []),
+            "facts": values.get("facts", []),
+            "memory_notes": values.get("memory_notes", []),
         }
 
     # -- internals --------------------------------------------------------------------------
@@ -236,6 +246,57 @@ class Service:
         self._graph(config, None).update_state(
             make_config(run_id), {"pickup": pickup}, as_node="finalize"
         )
+
+    def _remember(self, run_id: str, config: dict) -> None:
+        """A finished copilot run is kept in the profile's memory. Practice runs are not: a
+        simulated deal says nothing true about this person. Never raises."""
+        profile_id = config.get("profile_id")
+        if self.memory is None or not profile_id or config.get("mode") != "copilot":
+            return
+        try:
+            state = self._graph(config, None).get_state(make_config(run_id))
+            values = state.values
+            if state.next or not values.get("outcome"):
+                return
+            self.memory.record_deal(
+                profile_id,
+                DealRecord(
+                    run_id=run_id,
+                    item_title=config.get("item_title") or "",
+                    category=config.get("category"),
+                    asking=Decimal(config["asking"]),
+                    final_price=values.get("final_price"),
+                    outcome=values["outcome"],
+                    mode="copilot",
+                    rounds=len(values.get("our_offers", [])),
+                ),
+            )
+        except Exception:  # noqa: BLE001 - memory is a convenience: it never breaks a negotiation
+            self.memory_failures += 1
+
+    def _memory_for_start(self, config: dict):
+        """Prompt lines about similar past deals (numbers only) and the prices they mention."""
+        profile_id = config.get("profile_id")
+        title = (config.get("item_title") or "").strip()
+        if self.memory is None or not profile_id or not title or config.get("mode") != "copilot":
+            return None, None
+        try:
+            deals = self.memory.similar_deals(profile_id, title, config.get("category"), limit=2)
+        except Exception:  # noqa: BLE001
+            self.memory_failures += 1
+            return None, None
+        lines, prices = memory_notes(deals)
+        return lines or None, prices or None
+
+    def _pickup_hours(self, config: dict) -> str:
+        profile_id = config.get("profile_id")
+        if self.memory is None or not profile_id:
+            return "any"
+        try:
+            return self.memory.get_preferences(profile_id).pickup_hours
+        except Exception:  # noqa: BLE001
+            self.memory_failures += 1
+            return "any"
 
     def _graph(self, config: dict, port):
         simulate = config.get("mode", "simulate") == "simulate"
@@ -294,6 +355,7 @@ class Service:
                         port = SimSellerPort(SimSeller(asking, persona, seed=config["seed"]))
                     graph = self._graph(config, port)
                     listing, comparables = listing_of(config)
+                    notes, prices = self._memory_for_start(config)
                     run_graph(
                         graph,
                         asking,
@@ -303,20 +365,25 @@ class Service:
                         thread_id=run_id,
                         listing=listing,
                         comparables=comparables,
+                        memory_notes=notes,
+                        memory_prices=prices,
                     )
-                    return
-                if copilot:
-                    port = ManualSellerPort()  # nothing to rebuild: the checkpoint holds it all
                 else:
-                    # A restart-safe path: rebuild the seller from the offers in the checkpoint.
-                    persona, seed = get_persona(config["persona"]), config["seed"]
-                    offers = current_state(self._graph(config, None), run_id)["our_offers"]
-                    port = SimSellerPort.restore(asking, persona, seed, offers, with_opening=True)
-                graph = self._graph(config, port)
-                if mode in ("decide", "reply", "stop"):
-                    decide(graph, run_id, payload)
-                else:
-                    approve(graph, run_id)
+                    if copilot:
+                        port = ManualSellerPort()  # nothing to rebuild: the checkpoint holds it all
+                    else:
+                        # A restart-safe path: rebuild the seller from the offers in the checkpoint.
+                        persona, seed = get_persona(config["persona"]), config["seed"]
+                        offers = current_state(self._graph(config, None), run_id)["our_offers"]
+                        port = SimSellerPort.restore(
+                            asking, persona, seed, offers, with_opening=True
+                        )
+                    graph = self._graph(config, port)
+                    if mode in ("decide", "reply", "stop"):
+                        decide(graph, run_id, payload)
+                    else:
+                        approve(graph, run_id)
+                self._remember(run_id, config)
         except Exception as error:  # noqa: BLE001 - a failed run is reported, never lost
             self._errors[run_id] = f"{type(error).__name__}: {str(error)[:200]}"
         finally:

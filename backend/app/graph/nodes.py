@@ -84,12 +84,12 @@ def build_action(decision: StrategyDecision, message: str):
         return AskQuestion(message=message)
     return WalkAway(message=message)
 
-
 def check_draft(
     decision: StrategyDecision,
     draft: str | None,
     ctx: NegotiationContext,
     facts: list[dict] | None = None,
+    avoid: list[Decimal] | None = None,
 ) -> list[Violation]:
     if not draft or not draft.strip():
         return [Violation(code="no_draft", public_message="Write a message.")]
@@ -111,6 +111,16 @@ def check_draft(
                 public_message="Do not include tags or markup in the message.",
             )
         )
+    if avoid:  # prices from the buyer's own past deals must never reach the seller
+        allowed = {decision.price, ctx.asking_price, ctx.seller_last_price}
+        stated = set(extract_amounts(draft, ctx.asking_price))
+        if any(price in stated and price not in allowed for price in avoid):
+            violations.append(
+                Violation(
+                    code="memory_echo",
+                    public_message="Do not mention the buyer's past purchases or their prices.",
+                )
+            )
     if facts:
         invented = ungrounded_claims(draft, facts)
         if invented:
@@ -231,6 +241,7 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None,
                 s["seller_probed"],
                 s["feedback"],
                 facts=s.get("facts") if ground else None,
+                memory_notes=s.get("memory_notes") or None,
             )
         except LLMError as error:
             return {"draft": None, "trace": log(s, "compose", error=str(error)[:200])}
@@ -238,7 +249,9 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None,
 
     def validate(s: NegState):
         facts = s.get("facts") if ground and s.get("facts") else None
-        violations = check_draft(decision_of(s), s["draft"], context(s), facts)
+        violations = check_draft(
+            decision_of(s), s["draft"], context(s), facts, avoid=s.get("memory_prices") or None
+        )
         ok = not violations
         entry: dict = {"ok": ok, "codes": [v.code for v in violations]}
         if not ok:

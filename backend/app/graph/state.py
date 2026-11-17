@@ -34,9 +34,12 @@ class NegState(TypedDict, total=False):
     final_price: Decimal | None
     pickup: dict | None  # result of booking the pickup slot after a deal
     approvals: list[str] # gates the human approved: close_deal, book_pickup
+    memory_notes: list[str]  # code-built lines about the buyer's own past deals (numbers only)
+    memory_prices: list[Decimal]  # the prices those lines mention: a draft must not repeat them
     trace: list[dict]
 
 
+    
 def initial_state(
     asking: Decimal,
     budget: Decimal,
@@ -45,6 +48,8 @@ def initial_state(
     listing: dict | None = None,
     comparables: list[Decimal] | None = None,
     run_id: str | None = None,
+    memory_notes: list[str] | None = None,
+    memory_prices: list[Decimal] | None = None,
 ) -> NegState:
     claims: list[dict] = []
     facts: list[dict] = []
@@ -79,5 +84,7 @@ def initial_state(
         "final_price": None,
         "pickup": None,
         "approvals": [],
+        "memory_notes": memory_notes or [],
+        "memory_prices": memory_prices or [],
         "trace": [],
     }
