@@ -136,6 +136,13 @@ as percentages above or below that median. Comparables are informational only: t
 does not use them, and Haggle does not look up market prices. Fact extraction recognizes supported
 keys and wording; it is not an exhaustive natural-language verifier.
 
+The **Profile** page exposes the browser's anonymous memory preferences and saved Copilot history.
+It can save a default style, preferred pickup-time window, and a pickup-area reminder; users can
+forget an individual run or clear the current profile. The Copilot Home aside may show up to three
+wording-matched past deals when the item title has at least three characters. On the Item tab,
+**From your history** shows the private, code-built notes supplied to the agent; it does not show
+for runs without notes.
+
 The status chip and Activity pending step are derived from the current snapshot question, not
 historical trace events. Activity omits Copilot schedule steps and rejected draft text.
 
@@ -168,7 +175,7 @@ npm run e2e     # Playwright (desktop-light, 1440x900, light scheme)
 Backend (`HAGGLE_LLM` must not be "live"):
 ```
 ruff check .
-pytest backend/tests -q --ignore=backend/tests/test_db.py   # expect 318 passed
+pytest backend/tests -q --ignore=backend/tests/test_db.py   # expect 376 passed
 ```
 
 ## Trace model

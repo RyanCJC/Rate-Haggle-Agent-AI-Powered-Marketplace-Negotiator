@@ -40,6 +40,11 @@ negotiation strategy.
 7. For a Copilot deal, propose free pickup times or enter a time the seller suggested. The pickup
    message is written by code; the human decides which time the seller agreed to and records it.
 
+The optional Profile page stores preferences and finished Copilot negotiation history under an
+anonymous id kept in this browser. Similar past deals are matched by wording, and any private
+history notes shown on the Item tab are not shared with the seller. Practice runs are not remembered;
+see [profile memory](./profile-memory.md) for what is stored and how to clear it.
+
 ## Pickup coordination
 
 Pickup coordination is available only after a Copilot run finishes with a deal. Haggle proposes
