@@ -44,6 +44,12 @@ DEV_PERSONAS = [
             term_change_ratio=0.05, tags=("term_change",)),
     Persona(name="dishonest", split="dev", reservation_ratio=0.75, concede_share=0.30,
             close_gap=0.03, max_rounds=8, lowball_ratio=0.50, tags=("dishonest",)),
+    Persona(name="walker_2", split="dev", reservation_ratio=0.80, concede_share=0.30,
+            close_gap=0.03, max_rounds=2, lowball_ratio=0.50, tags=("impatient",)),
+    Persona(name="walker_3", split="dev", reservation_ratio=0.84, concede_share=0.20,
+            close_gap=0.03, max_rounds=3, lowball_ratio=0.55, tags=("impatient",)),
+    Persona(name="walker_4", split="dev", reservation_ratio=0.76, concede_share=0.30,
+            close_gap=0.04, max_rounds=4, lowball_ratio=0.50, tags=("impatient",)),
 ]
 
 TEST_PERSONAS = [
@@ -60,7 +66,22 @@ TEST_PERSONAS = [
             close_gap=0.03, max_rounds=3, lowball_ratio=0.50, tags=("impatient",)),
 ]
 
-PERSONAS = DEV_PERSONAS + TEST_PERSONAS
+TEST2_PERSONAS = [
+    Persona(name="short_fuse", split="test2", reservation_ratio=0.82, concede_share=0.35,
+            close_gap=0.03, max_rounds=2, lowball_ratio=0.50, tags=("impatient",)),
+    Persona(name="brisk_mid", split="test2", reservation_ratio=0.78, concede_share=0.25,
+            close_gap=0.03, max_rounds=3, lowball_ratio=0.55, tags=("impatient",)),
+    Persona(name="brisk_firm", split="test2", reservation_ratio=0.88, concede_share=0.12,
+            close_gap=0.02, max_rounds=3, lowball_ratio=0.60, tags=("impatient",)),
+    Persona(name="moderate", split="test2", reservation_ratio=0.84, concede_share=0.20,
+            close_gap=0.03, max_rounds=5, lowball_ratio=0.55, tags=("moderate",)),
+    Persona(name="patient_soft", split="test2", reservation_ratio=0.75, concede_share=0.30,
+            close_gap=0.03, max_rounds=8, lowball_ratio=0.50, tags=("patient",)),
+    Persona(name="patient_firm", split="test2", reservation_ratio=0.90, concede_share=0.10,
+            close_gap=0.02, max_rounds=8, lowball_ratio=0.60, tags=("patient",)),
+]
+
+PERSONAS = DEV_PERSONAS + TEST_PERSONAS + TEST2_PERSONAS
 
 
 def get_persona(name: str) -> Persona:

@@ -9,8 +9,8 @@ from backend.app.sim.seller import SimSeller
 
 def test_personas_are_well_formed():
     names = [p.name for p in PERSONAS]
-    assert len(names) == len(set(names)) == 12
-    assert len(DEV_PERSONAS) == 8 and len(TEST_PERSONAS) == 4
+    assert len(names) == len(set(names)) == len(PERSONAS)
+    assert len(DEV_PERSONAS) == 11 and len(TEST_PERSONAS) == 4
     assert all(0.5 < p.reservation_ratio < 1.0 for p in PERSONAS)
 
 

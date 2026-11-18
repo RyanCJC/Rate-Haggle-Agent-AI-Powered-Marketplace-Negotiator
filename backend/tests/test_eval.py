@@ -26,7 +26,7 @@ def test_runs_are_reproducible():
 
 def test_haggle_never_breaks_the_budget_or_leaks(haggle_results):
     summary = summarize(haggle_results)
-    assert summary["runs"] == 8 * 3 * 4 * 2 * len(HAGGLE)
+    assert summary["runs"] == len(DEV_PERSONAS) * 3 * 4 * 2 * len(HAGGLE)
     assert summary["budget_violations"] == 0
     assert summary["outbound_violations"] == 0
 

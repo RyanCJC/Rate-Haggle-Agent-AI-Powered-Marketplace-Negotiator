@@ -53,11 +53,16 @@ def capped_ladder_policy(state: StrategyState) -> StrategyDecision:
     return StrategyDecision(kind="offer", price=price, reason=f"capped step {state.round}")
 
 
+# Chosen on the DEV split only; see eval/reports/round2_tuning.md and docs/eval_round2_plan.md.
+V2_PARAMS = {"opening_ratio": Decimal("0.78"), "beta": 1.0}
+
+
 def default_policies() -> dict[str, Policy]:
     longer = STYLES["balanced"].model_copy(update={"horizon": 8, "patience": 4})
     return {
         "haggle_aggressive": haggle_policy(STYLES["aggressive"]),
         "haggle_balanced": haggle_policy(STYLES["balanced"]),
+        "haggle_balanced_v2": haggle_policy(STYLES["balanced"].model_copy(update=V2_PARAMS)),
         "haggle_safe": haggle_policy(STYLES["safe"]),
         "haggle_balanced_long": haggle_policy(longer),
         "b2_fixed_discount": fixed_discount_policy,
