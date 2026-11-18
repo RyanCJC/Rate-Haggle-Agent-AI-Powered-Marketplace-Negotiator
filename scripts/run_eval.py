@@ -1,56 +1,67 @@
 import argparse
 import json
-import time
+import subprocess
 from pathlib import Path
 
-from backend.app.evaluation.metrics import summarize_by
 from backend.app.evaluation.policies import default_policies
+from backend.app.evaluation.protocol import (
+    ASKINGS,
+    BASELINES,
+    DEFAULT_SEEDS,
+    HEADLINE,
+    RATIOS,
+    split_refusal,
+)
+from backend.app.evaluation.report import render_report
 from backend.app.evaluation.runner import build_scenarios, run_suite
 from backend.app.sim.personas import DEV_PERSONAS, TEST_PERSONAS
 
-
-def fmt(value, pct=False, digits=2):
-    if value is None:
-        return "-"
-    return f"{value:.0%}" if pct else f"{value:.{digits}f}"
+OUT = Path("eval/reports")
 
 
-def print_table(title, rows):
-    print(f"\n{title}")
-    header = (
-        f"{'name':<22}{'runs':>5}{'deal%':>7}{'impossible deals':>18}"
-        f"{'budget viol':>13}{'leaks':>7}{'surplus':>9}{'+-95%':>7}{'rounds':>8}"
-    )
-    print(header)
-    for name, s in rows.items():
-        print(
-            f"{name:<22}{s['runs']:>5}{fmt(s['deal_rate_feasible'], pct=True):>7}"
-            f"{s['deals_when_infeasible']:>18}{s['budget_violations']:>13}"
-            f"{s['outbound_violations']:>7}{fmt(s['mean_surplus']):>9}"
-            f"{fmt(s['surplus_ci95']):>7}{fmt(s['mean_rounds'], digits=1):>8}"
-        )
+def git(*args: str) -> str:
+    try:
+        done = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    return done.stdout.strip()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
-    parser.add_argument("--detail", default="haggle_balanced", help="policy to break down")
+    parser.add_argument("--seeds", type=int, default=DEFAULT_SEEDS)
+    parser.add_argument("--final", action="store_true", help="confirm a frozen test-split run")
+    parser.add_argument("--force", action="store_true", help="rerun a scored test split")
     args = parser.parse_args()
 
-    if args.split == "test":
-        print("NOTE: the test split is the final score. Do not tune on it.")
+    prefix = "final_test" if args.split == "test" else "dev"
+    report_file = OUT / f"{prefix}_report.md"
+    runs_file = OUT / f"{prefix}_runs.json"
+    commit = git("rev-parse", "--short", "HEAD")
+    dirty = bool(git("status", "--porcelain"))
+    reason = split_refusal(args.split, args.final, args.force, report_file.exists(), dirty)
+    if reason:
+        raise SystemExit(f"REFUSED: {reason}")
+
     personas = DEV_PERSONAS if args.split == "dev" else TEST_PERSONAS
-    results = run_suite(default_policies(), build_scenarios(personas))
+    seeds = tuple(range(args.seeds))
+    results = run_suite(default_policies(), build_scenarios(personas, ASKINGS, RATIOS, seeds))
+    meta = {
+        "commit": commit,
+        "dirty": dirty,
+        "personas": [p.name for p in personas],
+        "askings": ASKINGS,
+        "ratios": RATIOS,
+        "seeds": args.seeds,
+    }
+    report = render_report(results, args.split, HEADLINE, BASELINES, meta)
 
-    print_table(f"Policies on the {args.split} split", summarize_by(results, "policy"))
-    detail = [r for r in results if r.policy == args.detail]
-    print_table(f"{args.detail} by persona", summarize_by(detail, "persona"))
-
-    out_dir = Path("eval/reports")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / f"eval_{args.split}_{int(time.time())}.json"
-    out_file.write_text(json.dumps([r.model_dump(mode="json") for r in results], indent=1))
-    print(f"\nsaved {len(results)} runs to {out_file}")
+    OUT.mkdir(parents=True, exist_ok=True)
+    runs_file.write_text(json.dumps([r.model_dump(mode="json") for r in results]))
+    report_file.write_text(report, encoding="utf-8")
+    print(report)
+    print(f"saved {report_file} and {runs_file}")
 
 
 if __name__ == "__main__":
