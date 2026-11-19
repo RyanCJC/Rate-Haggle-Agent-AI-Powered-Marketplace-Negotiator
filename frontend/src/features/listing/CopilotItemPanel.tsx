@@ -1,4 +1,5 @@
 import { factLabel, factStatusLabel, marketCheck } from "../../lib/listing";
+import { categoryLabel } from "../../lib/categories";
 import type { FactStatus, Snapshot } from "../../types";
 import { Badge } from "../../ui/badge/badge";
 import { Card } from "../../ui/card/card";
@@ -33,9 +34,16 @@ export function CopilotItemPanel({ snapshot }: CopilotItemPanelProps) {
   const hasMarketCheck =
     prices.length >= 2 &&
     marketCheck(prices, Number(snapshot.config.asking), Number(snapshot.config.budget)) !== null;
+  const category = snapshot.config.category;
+  const categoryGuessed = snapshot.config.category_guessed;
 
   return (
     <section className={styles.panel} aria-label="Item facts" data-testid="copilot-item-panel">
+      {category && (
+        <p className={styles.category} data-testid="item-category">
+          {categoryLabel(category)}{categoryGuessed ? " (guessed from the title)" : ""}
+        </p>
+      )}
       <p className={styles.summary}>
         {allUnknown
           ? "No listing text was given, so the agent states no item details and asks instead."

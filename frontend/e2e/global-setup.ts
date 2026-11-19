@@ -48,7 +48,10 @@ export default async function globalSetup(): Promise<void> {
     // 3. Assert snapshot trace has validate entries with ok and codes keys
     const validates = snapshot.trace.filter((e: any) => e.node === "validate");
     if (validates.length === 0) {
-      throw new Error("No validate entries found in run trace");
+      const nodes = snapshot.trace.map((e: any) => e.node).join(",") || "none";
+      throw new Error(
+        `No validate entries found in run trace (status=${snapshot.status}, error=${snapshot.error ?? "none"}, nodes=${nodes})`,
+      );
     }
     for (const entry of validates) {
       if (entry.ok === undefined || entry.codes === undefined) {

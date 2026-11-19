@@ -152,4 +152,116 @@ describe("buildTimeline", () => {
       "Blocked: the draft stated an item detail that is not in the listing or the chat.",
     );
   });
+
+  it("groups clarify entries under 'Research before this offer' with human tool labels", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "clarify", step: 1, tool: "get_listing" },
+      { node: "clarify", step: 2, tool: "get_market_stats" },
+      { node: "clarify", step: 3, tool: "search_knowledge" },
+      { node: "compose", attempt: 1 },
+      { node: "validate", ok: true, codes: [] },
+      { node: "execute", action: "offer", price: "820" },
+    ];
+    const model = buildTimeline(trace);
+    const clarifySteps = model.turns.flatMap((t) =>
+      t.steps.filter((s) => s.node === "clarify"),
+    );
+    expect(clarifySteps).toHaveLength(1);
+    expect(clarifySteps[0].label).toBe("Research before this offer");
+    expect(clarifySteps[0].clarify?.tools).toEqual([
+      "Read the listing",
+      "Checked market prices",
+      "Searched buying guidance",
+    ]);
+  });
+
+  it("does not show a clarify heading when there are no clarify entries", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "compose", attempt: 1 },
+      { node: "validate", ok: true, codes: [] },
+      { node: "execute", action: "offer", price: "820" },
+    ];
+    const model = buildTimeline(trace);
+    const clarifySteps = model.turns.flatMap((t) =>
+      t.steps.filter((s) => s.node === "clarify"),
+    );
+    expect(clarifySteps).toHaveLength(0);
+  });
+
+  it("shows clarify result text when the entry carries a note", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "clarify", step: 1, tool: "ask_seller", note: "ask refused" },
+      { node: "compose", attempt: 1 },
+      { node: "validate", ok: true, codes: [] },
+      { node: "execute", action: "offer", price: "820" },
+    ];
+    const model = buildTimeline(trace);
+    const clarifySteps = model.turns.flatMap((t) =>
+      t.steps.filter((s) => s.node === "clarify"),
+    );
+    expect(clarifySteps).toHaveLength(1);
+    expect(clarifySteps[0].clarify?.results).toContain("ask refused");
+  });
+
+  it("places clarify group only in the turn where clarify entries occur", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "compose", attempt: 1 },
+      { node: "validate", ok: true, codes: [] },
+      { node: "execute", action: "offer", price: "820" },
+      { node: "ingest", intent: { price: "820", accepted: true, walked_away: false, asks_budget: false, pressure: false, terms_changed: false } },
+      { node: "plan", kind: "offer", price: "835", reason: "counter" },
+      { node: "clarify", step: 1, tool: "get_listing" },
+      { node: "clarify", step: 2, tool: "get_market_stats" },
+      { node: "clarify", step: 3, tool: "ask_seller" },
+      { node: "compose", attempt: 1 },
+      { node: "validate", ok: true, codes: [] },
+      { node: "execute", action: "offer", price: "835" },
+    ];
+    const model = buildTimeline(trace);
+    expect(model.turns).toHaveLength(2);
+
+    const turn1 = model.turns[0];
+    expect(turn1.title).toContain("Turn 1");
+    expect(turn1.steps.filter((s) => s.node === "clarify")).toHaveLength(0);
+
+    const turn2 = model.turns[1];
+    expect(turn2.title).toContain("Turn 2");
+    const clarifySteps = turn2.steps.filter((s) => s.node === "clarify");
+    expect(clarifySteps).toHaveLength(1);
+    expect(clarifySteps[0].label).toBe("Research before this offer");
+
+    // Placed after plan, before compose/write.
+    const nodeOrder = turn2.steps.map((s) => s.node);
+    const planIndex = nodeOrder.indexOf("plan");
+    const clarifyIndex = nodeOrder.indexOf("clarify");
+    const composeIndex = nodeOrder.indexOf("compose");
+    expect(planIndex).toBeGreaterThanOrEqual(0);
+    expect(clarifyIndex).toBeGreaterThan(planIndex);
+    expect(composeIndex).toBeGreaterThan(clarifyIndex);
+
+    expect(clarifySteps[0].clarify?.tools).toEqual([
+      "Read the listing",
+      "Checked market prices",
+      "Asked the seller",
+    ]);
+  });
+
+  it("shows clarify entries when the trace ends right after them (no compose after)", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "clarify", step: 1, tool: "get_listing" },
+      { node: "clarify", step: 2, tool: "ask_seller" },
+    ];
+    const model = buildTimeline(trace);
+    expect(model.turns).toHaveLength(1);
+    const turn = model.turns[0];
+    const clarifySteps = turn.steps.filter((s) => s.node === "clarify");
+    expect(clarifySteps).toHaveLength(1);
+    expect(clarifySteps[0].label).toBe("Research before this offer");
+    expect(clarifySteps[0].clarify?.tools).toEqual(["Read the listing", "Asked the seller"]);
+  });
 });

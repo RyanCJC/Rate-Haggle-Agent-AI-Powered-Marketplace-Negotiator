@@ -4,7 +4,7 @@ import { Icon } from "../icon/icon";
 import styles from "./button.module.css";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-export type ButtonSize = "sm" | "md";
+export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -23,6 +23,7 @@ const VARIANT: Record<ButtonVariant, string> = {
 const SIZE: Record<ButtonSize, string> = {
   sm: styles.sizeSm,
   md: styles.sizeMd,
+  lg: styles.sizeLg,
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(

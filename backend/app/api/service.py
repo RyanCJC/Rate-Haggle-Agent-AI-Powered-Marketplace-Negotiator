@@ -1,7 +1,11 @@
+import logging
 import threading
+import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
+from pathlib import Path
 
 from backend.app.core.calendar_rules import to_myt_iso
 from backend.app.core.pickup import describe_slot, pickup_message, prefer_hours
@@ -18,10 +22,19 @@ from backend.app.graph.manual import ManualSellerPort
 from backend.app.graph.nodes import check_draft, context, decision_of
 from backend.app.graph.ports import CalendarError, SimSellerPort
 from backend.app.llm.fake import RuleBasedLLM
+from backend.app.logs import run_id_var
 from backend.app.memory.context import memory_notes
 from backend.app.memory.models import DealRecord
 from backend.app.sim.personas import get_persona
 from backend.app.sim.seller import SimSeller
+
+logger = logging.getLogger("haggle.run")
+
+
+def where(error: BaseException) -> str:
+    """The last three places the error passed through: file:line only, never values."""
+    frames = traceback.extract_tb(error.__traceback__)[-3:]
+    return " <- ".join(f"{Path(f.filename).name}:{f.lineno}" for f in reversed(frames)) or "?"
 
 
 class NotFound(Exception):
@@ -61,13 +74,23 @@ class Service:
     runs store, never in this object, so a restarted server loses nothing."""
 
     def __init__(
-        self, saver, calendar, runs, llm_factory=RuleBasedLLM, workers: int = 8, memory=None
+        self,
+        saver,
+        calendar,
+        runs,
+        llm_factory=RuleBasedLLM,
+        workers: int = 8,
+        memory=None,
+        clarify: bool = False,
+        knowledge=None,
     ):
         self.saver = saver
         self.calendar = calendar
         self.runs = runs
         self.memory = memory  # profile memory (optional): remembers finished copilot deals
         self.memory_failures = 0  # memory trouble is counted, never allowed to fail a run
+        self.clarify = clarify  # may the model look things up or ask the seller before replying
+        self.knowledge = knowledge  # backend of search_knowledge: (query, category) -> passages
         self.llm = llm_factory()
         self._pool = ThreadPoolExecutor(max_workers=workers)
         self._guard = threading.Lock()
@@ -271,8 +294,9 @@ class Service:
                     rounds=len(values.get("our_offers", [])),
                 ),
             )
-        except Exception:  # noqa: BLE001 - memory is a convenience: it never breaks a negotiation
+        except Exception as error:  # noqa: BLE001 - memory never breaks a negotiation
             self.memory_failures += 1
+            logger.warning("memory: could not record the deal (%s)", type(error).__name__)
 
     def _memory_for_start(self, config: dict):
         """Prompt lines about similar past deals (numbers only) and the prices they mention."""
@@ -282,8 +306,9 @@ class Service:
             return None, None
         try:
             deals = self.memory.similar_deals(profile_id, title, config.get("category"), limit=2)
-        except Exception:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             self.memory_failures += 1
+            logger.warning("memory: could not read similar deals (%s)", type(error).__name__)
             return None, None
         lines, prices = memory_notes(deals)
         return lines or None, prices or None
@@ -294,8 +319,9 @@ class Service:
             return "any"
         try:
             return self.memory.get_preferences(profile_id).pickup_hours
-        except Exception:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001
             self.memory_failures += 1
+            logger.warning("memory: could not read preferences (%s)", type(error).__name__)
             return "any"
 
     def _graph(self, config: dict, port):
@@ -307,6 +333,8 @@ class Service:
             approve_close=config["autonomy"] == "approve_close",
             calendar=self.calendar if simulate else None,  # copilot never books anything
             ground=not simulate,  # copilot states only what the listing or seller said
+            clarify=self.clarify,
+            knowledge=self.knowledge,
         )
 
     def _reserve(self, run_id: str) -> None:
@@ -342,6 +370,9 @@ class Service:
 
     def _drive(self, run_id: str, mode: str, payload) -> None:
         """Run the graph until it pauses or finishes. The one path for every command."""
+        token = run_id_var.set(run_id)  # every log line from this thread now carries the run id
+        started = time.monotonic()
+        logger.info("run %s", mode)
         try:
             with self._lock(run_id):
                 config = self.runs.get(run_id)
@@ -386,5 +417,9 @@ class Service:
                 self._remember(run_id, config)
         except Exception as error:  # noqa: BLE001 - a failed run is reported, never lost
             self._errors[run_id] = f"{type(error).__name__}: {str(error)[:200]}"
+            logger.error("run failed: %s (at %s)", self._errors[run_id], where(error))
+        else:
+            logger.info("run %s done in %.1fs", mode, time.monotonic() - started)
         finally:
             self._release(run_id)
+            run_id_var.reset(token)

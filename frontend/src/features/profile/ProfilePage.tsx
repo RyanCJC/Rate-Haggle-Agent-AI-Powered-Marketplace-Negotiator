@@ -191,6 +191,15 @@ export function ProfilePage() {
 
   return (
     <div className={styles.profile} data-testid="profile-page">
+      <Button
+        type="button"
+        variant="ghost"
+        size="lg"
+        onClick={() => void (window.location.hash = "")}
+        data-testid="profile-back"
+      >
+        Back
+      </Button>
       <header className={styles.header}>
         <h1>Your profile</h1>
         <p>

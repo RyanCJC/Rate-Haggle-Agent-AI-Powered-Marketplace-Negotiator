@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { replyToSeller, stopRun } from "../../api";
 import { Button } from "../../ui/button/button";
+import { replyArguments } from "./replyPayload";
 import type { Question } from "../../types";
 import styles from "./copilotComposer.module.css";
 
@@ -56,12 +57,9 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
     setError(null);
     setNotice("");
     try {
-      await replyToSeller(
-        runId,
-        reply,
-        editedDraft !== question.draft ? editedDraft : undefined,
-      );
-    } catch (problem) {
+      const args = replyArguments(question.kind, reply, question.draft, editedDraft);
+      await replyToSeller(runId, args.reply, args.sentText);
+        } catch (problem) {
       const requestError = problem as RequestError;
       if (requestError.messages?.length) {
         setError(requestError.messages.join(" "));
@@ -96,9 +94,13 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
 
   if (!question) return null;
 
+  const isQuestion = question.kind === "question";
+
   return (
     <section className={styles.composer} aria-labelledby="copilot-composer-title" data-testid="copilot-composer">
-      <h2 id="copilot-composer-title" className={styles.title}>Next message</h2>
+      <h2 id="copilot-composer-title" className={styles.title}>
+        {isQuestion ? "The agent wants to ask the seller" : "Next message"}
+      </h2>
       <div className={styles.draftBlock}>
         <label className={styles.label} htmlFor="copilot-draft">Draft to send</label>
         <textarea
@@ -144,7 +146,7 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
       </details>
 
       <form className={styles.replyForm} onSubmit={(event) => void submitReply(event)}>
-        <label className={styles.label} htmlFor="copilot-reply">Paste the seller&apos;s reply</label>
+        <label className={styles.label} htmlFor="copilot-reply">Paste the seller's reply</label>
         <textarea
           ref={replyRef}
           id="copilot-reply"
@@ -177,8 +179,8 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
               data-testid="copilot-end"
             >
               End negotiation
-            </Button>
-          ) : (
+              </Button>
+            ) : (
             <div className={styles.confirm} data-testid="copilot-stop-confirm">
               <span>End this negotiation?</span>
               <Button type="button" variant="danger" disabled={inFlight} onClick={() => void endNegotiation()}>

@@ -10,7 +10,15 @@ export type Autonomy = "auto" | "approve_close";
 export type Style = "aggressive" | "balanced" | "safe";
 export type PickupHours = "any" | "morning" | "afternoon" | "evening";
 export type Theme = "system" | "light" | "dark";
-export type ListingCategory = "monitors" | "phones" | "laptops" | "other";
+export type ListingCategory =
+  | "monitors"
+  | "phones"
+  | "laptops"
+  | "cameras"
+  | "consoles"
+  | "furniture"
+  | "appliances"
+  | "other";
 export type FactStatus = "confirmed" | "claimed" | "conflicting" | "missing";
 export type Question =
   | { gate: "close_deal"; price: string | null; draft?: string }
@@ -64,6 +72,7 @@ export interface Snapshot {
     item_title?: string | null;
     seller_opening?: string | null;
     category?: ListingCategory | null;
+    category_guessed?: boolean;
     listing_text?: string | null;
     comparables?: string[] | null;
   };

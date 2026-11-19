@@ -1,8 +1,9 @@
 import hashlib
 import math
-import os
 import re
 from typing import Protocol
+
+from backend.app.settings import Settings
 
 DIM = 384
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
@@ -39,7 +40,7 @@ class FastEmbedder:
             from fastembed import TextEmbedding
         except ImportError as error:
             raise RuntimeError("fastembed is not installed: pip install fastembed") from error
-        model = model or os.getenv("EMBED_MODEL", DEFAULT_MODEL)
+        model = model or Settings.from_env().embed_model or DEFAULT_MODEL       
         self.name = f"fastembed:{model}"
         self._model = TextEmbedding(model_name=model)
 

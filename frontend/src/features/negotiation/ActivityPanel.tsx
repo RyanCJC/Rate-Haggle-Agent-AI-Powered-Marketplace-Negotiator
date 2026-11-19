@@ -62,7 +62,7 @@ export function ActivityPanel({ trace, connection, snapshot }: ActivityPanelProp
   }, [handleScroll, trace.length]);
 
   return (
-    <section className={styles.panel} aria-label="Activity">
+    <section className={styles.panel} aria-label="Activity" data-testid="activity">
       <div className={styles.header}>
         <h2 className={styles.title}>Activity</h2>
         <div className={styles.connection}>
@@ -158,7 +158,21 @@ function renderStepDetail(step: TraceStep, copilot = false): ReactNode {
       );
     case "clarify":
       return step.clarify?.tools.length ? (
-        <span className={styles.detailTools}>Tools: {step.clarify.tools.join(", ")}</span>
+        <div className={styles.clarifyGroup}>
+          <span className={styles.detailTools}>
+            {step.clarify.tools.join(", ")}
+          </span>
+          {step.clarify.results && step.clarify.results.length > 0 ? (
+            <div className={styles.clarifyResults}>
+              {step.clarify.results.map((result, index) => (
+                <details key={index} className={styles.expandableText}>
+                  <summary className={styles.expandableSummary}>Show more</summary>
+                  <p className={styles.expandableBody}>{result}</p>
+                </details>
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null;
     case "compose":
       return <span className={styles.detailAttempt}>Draft attempt {step.compose?.attempt ?? 1}</span>;
@@ -209,7 +223,7 @@ function renderStepDetail(step: TraceStep, copilot = false): ReactNode {
         );
       }
       if (exec.action === "accept") {
-        return <span className={styles.detailText}>Deal accepted at {exec.price != null ? `RM ${exec.price}` : "the seller&rsquo;s price"}.</span>;
+        return <span className={styles.detailText}>Deal accepted at {exec.price != null ? `RM ${exec.price}` : "the seller's price"}.</span>;
       }
       if (exec.action === "walk_away") {
         return <span className={styles.detailText}>The agent walked away.</span>;

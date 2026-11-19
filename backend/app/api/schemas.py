@@ -22,7 +22,12 @@ class StartRequest(BaseModel):
     mode: Literal["simulate", "copilot"] = "simulate"
     item_title: str | None = Field(default=None, max_length=120)
     seller_opening: str | None = Field(default=None, max_length=4000)
-    category: Literal["monitors", "phones", "laptops", "other"] | None = None
+    category: (
+        Literal[
+            "monitors", "phones", "laptops", "cameras", "consoles", "furniture", "appliances", "other"
+        ]
+        | None
+    ) = None
     listing_text: str | None = Field(default=None, max_length=4000)
     comparables: list[Decimal] | None = Field(default=None, max_length=8)
 

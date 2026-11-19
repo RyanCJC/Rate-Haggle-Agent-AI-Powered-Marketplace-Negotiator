@@ -32,9 +32,6 @@ export function recordedProfileIds(): string[] {
   }
 }
 
-/** Reads the profile id from a page's localStorage, registers it, and deletes
- *  the profile (and its deals) from the backend. Safe to call when no row
- *  exists (DELETE /profile is a no-op then). Mirrors the run registry. */
 export async function recordAndCleanupProfile(page: Page): Promise<void> {
   const id = await page
     .evaluate((key) => window.localStorage.getItem(key), PROFILE_ID_KEY)

@@ -60,7 +60,16 @@ export interface ScheduleStep {
 
 export interface ClarifyStep {
   tools: string[];
+  results?: string[];
 }
+
+const CLARIFY_TOOL_LABELS: Record<string, string> = {
+  get_listing: "Read the listing",
+  get_market_stats: "Checked market prices",
+  search_knowledge: "Searched buying guidance",
+  ask_seller: "Asked the seller",
+  proceed: "Proceed to offer",
+};
 
 export interface TraceStep {
   node: TraceNode;
@@ -186,7 +195,7 @@ function asSchedule(entry: TraceEntry): ScheduleStep {
   return {
     status: String(entry.status ?? ""),
     startAt: entry.start_at === null || entry.start_at === undefined ? null : String(entry.start_at),
-    detail: entry.detail === null || entry.detail === undefined ? null : String(entry.detail),
+    detail: entry.detail === null || entry.start_at === undefined ? null : String(entry.detail),
   };
 }
 
@@ -211,23 +220,25 @@ export function buildTimeline(
   let current: Turn | null = null;
   let turnNumber = 0;
   let clarifyTools: string[] = [];
+  let clarifyResults: string[] = [];
 
   const flushClarify = () => {
     if (clarifyTools.length > 0 && current) {
-      const uniq = [...new Set(clarifyTools)];
+      const uniqTools = [...new Set(clarifyTools)];
+      const uniqResults = [...new Set(clarifyResults)];
       current.steps.push({
         node: "clarify",
-        label: stepLabel("clarify"),
-        clarify: { tools: uniq },
+        label: "Research before this offer",
+        clarify: { tools: uniqTools.map((t) => CLARIFY_TOOL_LABELS[t] ?? t), results: uniqResults },
       });
       clarifyTools = [];
+      clarifyResults = [];
     }
   };
 
   for (const entry of trace) {
     const node = entryNode(entry);
     if (node === "plan") {
-      flushClarify();
       turnNumber += 1;
       current = {
         turn: turnNumber,
@@ -235,6 +246,7 @@ export function buildTimeline(
         steps: [],
       };
       turns.push(current);
+      flushClarify();
       current.steps.push({ node: "plan", label: stepLabel("plan"), plan: asPlan(entry) });
       continue;
     }
@@ -248,17 +260,16 @@ export function buildTimeline(
       });
       continue;
     }
-    if (!current) continue;
     if (node === "clarify") {
       const tool = entry.tool === null || entry.tool === undefined ? null : String(entry.tool);
+      const result = entry.note === null || entry.note === undefined ? null : String(entry.note);
       if (tool) clarifyTools.push(tool);
+      if (result) clarifyResults.push(result);
       continue;
     }
+    if (!current) continue;
     flushClarify();
     switch (node) {
-      case "clarify":
-        current.steps.push({ node: "clarify", label: stepLabel("clarify") });
-        break;
       case "compose":
         current.steps.push({ node: "compose", label: stepLabel("compose"), compose: asCompose(entry) });
         break;
@@ -288,6 +299,8 @@ export function buildTimeline(
         break;
     }
   }
+
+  flushClarify();
 
   return {
     turns,

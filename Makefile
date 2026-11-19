@@ -11,4 +11,4 @@ check:
 	ruff check . && pytest -q
 
 run:
-	uvicorn backend.app.main:app --reload
+	uvicorn backend.app.api.main:app --reload

@@ -1,164 +1,147 @@
-# Architecture (full annotated tree)
+# Architecture
 
-Complete repository layout, annotated:
+Haggle is a buyer-side negotiation agent. One rule shapes the whole design: **the language model
+proposes, plain code validates and executes.** The model writes the wording of a message and proposes
+what it read in the seller's reply. Code owns the price, the rules a message must pass, and every
+action with side effects.
+
+## Who decides what
+
+| Decision | Owner | Where |
+|---|---|---|
+| The price of the next offer | code | `core/strategy.py` (`decide`, styles aggressive / balanced / safe) |
+| The wording of a message | the model | `llm/tasks.py` |
+| Reading the seller's reply (price, accepted, walked away, asks for budget, pressure, changed terms) | the model proposes, code reconciles | `llm/tasks.py`, `llm/guards.py` (phantom-deal guard) |
+| Whether a draft may be sent | code | `core/outbound.py`, `core/validate.py`, `knowledge/grounding.py` |
+| Which read-only lookup to run before replying | the model chooses, code runs and validates | `llm/clarify.py`, `tools.py` |
+| Booking a pickup | code, through an MCP calendar server | `boundaries/calendar_*.py` |
+
+Your maximum budget never reaches a prompt: the model sees only the public view of the negotiation
+context (`NegotiationContext.public_view()` in `core/models.py`). A draft that breaks a rule is sent
+back to the model; if it keeps failing, a safe template message is used instead (`fallback`).
+
+## The graph
+
+```mermaid
+flowchart TD
+    START([start]) --> plan
+    plan -->|seller gave no price, or terms changed| clarify
+    plan --> compose
+    clarify --> compose
+    clarify --> validate
+    compose --> validate
+    validate -->|ok| execute
+    validate -->|rejected: write again| compose
+    validate -->|retries used up| fallback
+    fallback --> execute
+    execute --> ingest
+    execute --> finalize
+    ingest --> plan
+    ingest --> finalize
+    finalize -->|deal in Practice mode| schedule
+    finalize --> END([end])
+    schedule --> END
+```
+
+`graph/builder.py` wires the nodes (`graph/nodes.py`). State lives in `graph/state.py`.
+
+## Two modes
+
+**Practice** runs against a simulated seller (`sim/seller.py`, personas in `sim/personas.py`) through
+`SimSellerPort`. A finished deal is booked into the calendar automatically.
+
+**Copilot** talks to a real seller through a human. `ManualSellerPort` (`graph/manual.py`) pauses the
+graph with an interrupt for every message: the human sends the draft elsewhere and pastes the reply
+back (`seller_reply` gate, with `kind` "offer" or "question"). Closing a deal waits at a `close_deal`
+gate. In Copilot the agent states only facts from the listing or the seller (`ground=True`), and a
+pickup is arranged after the deal through the API, never by the graph.
+
+## Persistence and resume
+
+The service keeps no state of its own. Graph state is stored by a Postgres checkpointer (a connection
+pool that checks connections before use) and the run configuration in the `runs` table, so a server
+restart loses nothing. A run's status is derived from the stored state: `running`, `waiting_for_approval`,
+`finished`, `failed`, `stalled` (cut off mid-step: `POST /resume` continues it) or `lost` (no
+checkpoint). The browser follows a run through a server-sent-events stream that polls the checkpoint.
+A test kills a worker mid-run and resumes it.
+
+## Boundaries (MCP)
+
+The calendar is an MCP server in a separate process that receives only `DATABASE_URL`
+(`boundaries/calendar_server.py`). Slots are hourly, 10:00 to 19:00 Malaysia time, at least 24 hours
+ahead. Booking is idempotent: the key is `<run_id>:pickup`, so a retry never books twice.
+`boundaries/marketplace_server.py` is a prototype of a seller-facing boundary (see
+`scripts/demo_mcp.py`); no real marketplace is connected.
+
+## Research before the first offer
+
+When the decision is an offer and the seller has not stated a price (or the terms changed), the graph
+runs a bounded clarify loop. The model picks one read-only tool per step: `get_listing`,
+`get_market_stats`, `search_knowledge`, `ask_seller`, or stop. Code runs the tool and validates the
+choice. `tools.py` is the single registry of these tools; `docs/tools.md` is generated from it by
+`scripts/render_tools_doc.py`.
+
+## Categories and knowledge
+
+`knowledge/categories.py` holds one table of eight categories (name, label, keywords, extra item
+facts). It drives the API schema, the category guess from the title, the extra facts that are
+extracted, and the documents indexed. Documents in `knowledge/*.md` (one per category plus
+`general.md`) are embedded with `BAAI/bge-small-en-v1.5` (384 dimensions, `fastembed`) into the
+`knowledge_chunks` table by `scripts/index_knowledge.py`. A search covers the item's category plus
+general guidance. The embedder is created on first use, a failed search returns nothing and is logged,
+and a failed embedder is retried only after 60 seconds. Sixteen frozen queries check retrieval
+(top-1 hit on 15, top-3 hit on all 16 at the time of writing).
+
+## Profile memory
+
+An anonymous profile id (kept in the browser) stores preferences and finished Copilot deals
+(`memory/`). Only numbers and short notes reach a prompt. Practice runs are never remembered. A memory
+failure is counted and logged and never fails a negotiation. See `docs/profile-memory.md`.
+
+## Settings, the offline model, logging
+
+`settings.py` is the only place that reads the environment (a test enforces it; the calendar server,
+a separate process, is the one allowed exception). The model is live by default. The exact value
+`HAGGLE_LLM=offline` selects `RuleBasedLLM`, a rule-based stand-in that plays the same roles; the test
+suites and the e2e backend use it, so nothing in testing calls a real model.
+Logging (`logs.py`) writes one plain-text line per event under the `haggle.*` loggers, tagged with the
+run id. The rule: log what happened (task, timing, counts, error type), never content (prompts,
+messages, budgets, URLs, keys). A test scans the app for `print`, and others check that no log line
+contains private values.
+
+## Evaluation design
+
+`backend/app/evaluation/` evaluates the price strategy and the safety checks offline, without a
+language model. Sellers are split into development, test and test2 (`sim/personas.py`); tuning uses
+development sellers only. A negotiation scores the share of the seller's room to move that the buyer
+captured; no deal or a broken rule scores 0. Intervals are cluster bootstrap over seller x budget
+ratio cases, and comparisons are paired. The protocol is frozen in `evaluation/protocol.py`: a final
+split needs `--final`, a clean git tree, and is scored once per code version. Results and their
+limits are in the README (Evaluation) and in `eval/reports/`.
+
+## Repository map
 
 ```
-.
-├── README.md
-├── pyproject.toml            # ruff (line-length=100) + pytest config
-├── requirements.txt          # Python dependencies
-├── .env.example              # env var names (placeholders only)
-├── .gitignore
-├── scripts/                  # one-off and eval scripts
-│   ├── migrate.py            # apply database migrations (db/migrations/*.sql)
-│   ├── seed.py               # seed listings / comparables tables
-│   ├── seed_knowledge.py     # seed knowledge-base docs into listings
-│   ├── index_knowledge.py    # embed knowledge chunks into pgvector (knowledge_chunks)
-│   ├── run_eval.py           # policy suite on dev/test split → eval/reports/
-│   ├── run_scenarios.py      # regression scenario runner (7 scenarios)
-│   ├── compare_b1.py         # Haggle vs B1 prompt-only baseline
-│   ├── eval_grounding.py     # grounded vs invented item claims
-│   ├── delete_run.py         # e2e: delete negotiation runs from DB
-│   ├── delete_profiles.py    # e2e: delete profile rows from DB
-│   ├── setup_checkpointer.py # Postgres checkpointer setup
-│   ├── try_llm.py            # live-model smoke test
-│   ├── diag_api_pickup.py    # API + pickup diagnostics
-│   ├── diag_clarify.py       # clarify-loop diagnostics
-│   ├── crash_worker.py       # worker crash / resume demo
-│   ├── keep_warm.py          # keep server warm demo
-│   ├── demo_api.py           # demo: run API negotiation end-to-end
-│   ├── demo_approvals.py     # demo: approve/decline gates
-│   ├── demo_calendar.py      # demo: calendar booking + idempotency
-│   ├── demo_graph.py         # demo: run graph directly
-│   ├── demo_grounding.py     # demo: fact grounding
-│   ├── demo_knowledge.py     # demo: market stats + knowledge lookup
-│   ├── demo_mcp.py           # demo: marketplace MCP server
-│   ├── demo_resume.py        # demo: resume run from Postgres checkpoint
-│   ├── demo_sim.py           # demo: simulated negotiation grid
-│   └── demo_strategy.py      # demo: strategy styles (aggressive/balanced/safe)
-├── backend/
-│   ├── app/
-│   │   ├── main.py           # minimal /health FastAPI app (not the API)
-│   │   ├── db.py             # psycopg connection helper (loads .env)
-│   │   ├── api/
-│   │   │   ├── __init__.py
-│   │   │   ├── main.py       # FastAPI app + all HTTP endpoints + SSE stream
-│   │   │   ├── service.py    # background negotiation service (runs in thread pool)
-│   │   │   ├── runs.py       # run store: PgRuns (Postgres) / MemoryRuns (tests)
-│   │   │   └── schemas.py    # pydantic models: StartRequest, Decision, Reply, Pickup
-│   │   ├── graph/
-│   │   │   ├── __init__.py
-│   │   │   ├── builder.py    # build_graph / run_graph (StateGraph wiring + run_graph)
-│   │   │   ├── state.py      # NegState + initial_state
-│   │   │   ├── nodes.py      # plan / clarify / compose / validate / execute / ingest / finalize / schedule
-│   │   │   ├── control.py    # pending / current_state / approve / decide / waiting_for
-│   │   │   ├── ports.py      # SellerPort / calendar ports / in-memory calendar
-│   │   │   └── manual.py     # ManualSellerPort (Copilot human relay via interrupt)
-│   │   ├── core/
-│   │   │   ├── models.py     # actions (MakeOffer/Accept/…), NegotiationContext, Violation
-│   │   │   ├── strategy.py   # decide() + STYLES (aggressive/balanced/safe)
-│   │   │   ├── outbound.py   # pre-send message validation (leaks, ceiling claims)
-│   │   │   ├── validate.py   # deterministic action validator
-│   │   │   ├── pickup.py     # pickup message helpers
-│   │   │   ├── calendar_rules.py   # MYT slot generation / validation
-│   │   │   └── utility.py    # deal scoring (not on the hot path)
-│   │   ├── llm/
-│   │   │   ├── __init__.py
-│   │   │   ├── client.py     # OpenAI-compatible LLMClient
-│   │   │   ├── fake.py       # RuleBasedLLM (offline test double)
-│   │   │   ├── naive.py      # NaiveBuyerLLM (B1 baseline test double)
-│   │   │   ├── tasks.py      # extract intent / compose draft prompts
-│   │   │   ├── clarify.py    # clarify-loop tool choice
-│   │   │   ├── facts.py      # fact claim proposal + verification
-│   │   │   ├── guards.py     # intent reconciliation (phantom-deal guard)
-│   │   │   └── untrusted.py  # <seller_message> tag wrapping
-│   │   ├── knowledge/
-│   │   │   ├── __init__.py
-│   │   │   ├── facts.py      # claim extraction + reconciliation (Status enum)
-│   │   │   ├── grounding.py  # check a draft's item claims against known facts
-│   │   │   ├── retrieval.py  # pgvector semantic search (cosine distance)
-│   │   │   ├── repo.py       # listings / comparables / listing_facts access
-│   │   │   ├── market.py     # market statistics (median, quartiles)
-│   │   │   └── embed.py      # HashEmbedder (384-d, deterministic) + FastEmbedder (ONNX)
-│   │   ├── memory/
-│   │   │   ├── __init__.py
-│   │   │   ├── models.py     # Preferences, DealRecord, PastDeal
-│   │   │   ├── store.py      # PgMemory (profile + past-deals persistence)
-│   │   │   └── context.py    # memory_notes (private numbers-only context)
-│   │   ├── sim/
-│   │   │   ├── __init__.py
-│   │   │   ├── personas.py   # DEV_PERSONAS / TEST_PERSONAS + get_persona()
-│   │   │   └── seller.py     # SimSeller (rule-based seller with hidden reservation)
-│   │   └── boundaries/
-│   │       ├── __init__.py
-│   │       ├── session.py        # McpSession (stdio MCP client)
-│   │       ├── ports.py          # McpToolError
-│   │       ├── calendar_db.py    # DbCalendar (Postgres-backed slots, idempotent)
-│   │       ├── calendar_port.py  # McpCalendarPort
-│   │       ├── calendar_server.py# MCP: haggle-calendar (propose/book/cancel)
-│   │       └── marketplace_server.py # MCP: haggle-marketplace (open/send)
-│   └── tests/                # pytest suite
-│       ├── test_*.py         # unit tests (memory, api, graph, llm, knowledge, …)
-│       └── test_db.py        # excluded from the standard pytest run
-├── db/migrations/            # SQL migrations, applied by scripts/migrate.py
-│   ├── 001_init.sql
-│   ├── 002_vectors.sql       # create extension if not exists vector; knowledge_chunks
-│   ├── 003_enable_rls.sql
-│   ├── 004_knowledge_chunks.sql
-│   ├── 005_calendar_idempotency.sql
-│   ├── 006_runs.sql
-│   └── 007_profile_memory.sql
-├── knowledge/                # knowledge-base sources
-│   ├── laptops.md
-│   ├── monitors.md
-│   └── phones.md
-├── docs/
-│   ├── copilot-mode.md       # Copilot mode, pickup coordination, limits
-│   ├── profile-memory.md     # anonymous profile memory, preferences, clearing
-│   └── architecture.md       # this file
-├── eval/                     # eval run outputs (gitignored-ish; created by run_eval.py)
-│   └── reports/              # eval_<split>_<unix_ts>.json
-├── frontend/
-│   ├── vite.config.ts        # Vite + vitest, /api proxy to http://127.0.0.1:8000
-│   ├── playwright.config.ts  # e2e at 1440x900 light theme
-│   ├── package.json          # lint / test / e2e / build / preview / dev scripts
-│   ├── tsconfig.json
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── src/
-│   │   ├── App.tsx           # hash routing: /, #/profile, #/run/:id
-│   │   ├── api.ts            # fetch client (X-Profile-Id header)
-│   │   ├── useNegotiation.ts # SSE-driven run snapshot hook
-│   │   ├── types.ts          # shared TS types (Mode, Style, Autonomy, Deal, Snapshot, …)
-│   │   ├── lib/
-│   │   │   ├── format.ts     # formatRm, formatMatch
-│   │   │   ├── listing.ts    # marketCheck, parseComparables, factLabel, parseEvidence
-│   │   │   ├── memory.ts     # dealSummary, outcomeLabel, savingPercent, formatMatch
-│   │   │   ├── pickup.ts     # describeSlot, pickupMessage, preferHours, parseEvidence
-│   │   │   ├── profile.ts    # getProfileId (reads/creates haggle.profileId)
-│   │   │   ├── series.ts
-│   │   │   ├── theme.ts
-│   │   │   └── traceModel.ts
-│   │   ├── ui/               # design system
-│   │   │   ├── badge/        # Badge
-│   │   │   ├── button/       # Button (variant, size)
-│   │   │   ├── card/         # Card
-│   │   │   ├── icon/         # Icon (lucide-react)
-│   │   │   ├── logo/         # Logo
-│   │   │   ├── skeleton/     # Skeleton
-│   │   │   └── tabs/         # Tabs
-│   │   ├── components/shell/ # TopBar
-│   │   ├── features/home/    # New negotiation form + market check + similar deals
-│   │   ├── features/listing/ # CopilotItemPanel (item facts + market check)
-│   │   ├── features/negotiation/   # Workspace, Conversation, CopilotComposer, Deal,
-│   │   │   │                     ApprovalPanel, ActivityPanel, SummaryStrip, PriceLadder,
-│   │   │   │                     ErrorBoundary, NotFoundScreen
-│   │   └── features/profile/ # ProfilePage (preferences, past deals, clear memory)
-│   └── e2e/                  # Playwright specs (desktop-light)
-│       ├── profile.spec.ts   # Profile memory e2e
-│       ├── copilot.spec.ts   # Copilot e2e
-│       ├── flow.spec.ts      # Practice flow e2e
-│       ├── pickup.spec.ts    # Pickup coordination e2e
-│       ├── helpers.ts        # run id recording, screenshots, error collection
-│       └── profile-registry.ts # profile-id registry for e2e cleanup
+backend/app/
+  api/          FastAPI app, endpoints, SSE stream, background service, run store, schemas
+  graph/        LangGraph builder, nodes, state, control (approve/decide), seller ports
+  core/         strategy, outbound checks, action validator, pickup helpers, calendar rules
+  llm/          client (OpenAI-compatible), offline stand-in, prompts, clarify tools, guards
+  knowledge/    categories, fact extraction and grounding, retrieval, market stats, embedder, lookup
+  memory/       anonymous profile memory
+  boundaries/   MCP calendar and marketplace servers, MCP session and ports
+  sim/          seller simulator and personas (dev / test / test2)
+  evaluation/   policies, scenarios, runner, metrics, protocol, reports, round 2
+  settings.py   the only reader of the environment
+  tools.py      registry of the agent's tools
+  logs.py       structured logging
+backend/tests/  pytest suite (offline)
+db/migrations/  001 to 007: users, vectors, row-level security, knowledge_chunks,
+                calendar idempotency, runs, profile memory
+knowledge/      one buying-guidance document per category plus general.md
+scripts/        migrate, index_knowledge, run_eval, run_scenarios, demos, e2e cleanup helpers
+eval/reports/   committed reports: final_test_report.md, round2_test_report.md, round2_tuning.md
+frontend/src/   App, api client, SSE hook, lib (formatting, trace model, categories), ui (design
+                system), features (home, listing, negotiation, profile)
+frontend/e2e/   Playwright specs (category, copilot, flow, pickup, profile)
 ```

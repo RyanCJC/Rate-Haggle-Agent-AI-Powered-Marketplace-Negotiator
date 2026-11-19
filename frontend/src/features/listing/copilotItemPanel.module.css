@@ -12,6 +12,13 @@
   font-size: var(--text-sm);
 }
 
+.category {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 .tableWrap {
   width: 100%;
   min-width: 0;

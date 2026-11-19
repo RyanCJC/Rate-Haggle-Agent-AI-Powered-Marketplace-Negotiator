@@ -246,6 +246,62 @@
   font-size: var(--text-sm);
 }
 
+.clarifyGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.clarifyGroup .detailTools {
+  font-weight: 700;
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+}
+
+.clarifyResults {
+  margin-top: var(--space-1);
+}
+
+.expandableText {
+  margin: 0;
+  border: var(--elev-1);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--color-surface-2);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  line-height: var(--text-sm-lh);
+  max-width: 100%;
+}
+
+.expandableText[open] .expandableSummary {
+  margin-bottom: var(--space-2);
+}
+
+.expandableSummary {
+  cursor: pointer;
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+
+.expandableSummary::-webkit-details-marker {
+  display: none;
+}
+
+.expandableBody {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .jumpToLatest {
   position: absolute;
   bottom: var(--space-2);

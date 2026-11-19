@@ -6,6 +6,7 @@ import { Badge } from "../../ui/badge/badge";
 import { formatRm } from "../../lib/format";
 import { marketCheck, parseComparables } from "../../lib/listing";
 import { dealSummary, formatMatch, shouldShowSimilarDeals } from "../../lib/memory";
+import { CATEGORIES } from "../../lib/categories";
 import { MarketCheckCard } from "../listing/MarketCheckCard";
 import type { Autonomy, Deal, ListingCategory, Mode, Style } from "../../types";
 import styles from "./home.module.css";
@@ -24,13 +25,6 @@ const PERSONAS = [
 const MODES: { value: Mode; label: string }[] = [
   { value: "simulate", label: "Practice (simulated seller)" },
   { value: "copilot", label: "Copilot (real seller)" },
-];
-
-const CATEGORIES: { value: ListingCategory; label: string }[] = [
-  { value: "other", label: "Other" },
-  { value: "monitors", label: "Monitors" },
-  { value: "phones", label: "Phones" },
-  { value: "laptops", label: "Laptops" },
 ];
 
 const STYLES: { value: Style; label: string; hint: string }[] = [
@@ -265,7 +259,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
         <p className={styles.intro}>
           {isCopilot
             ? "You send every message yourself. Haggle never contacts anyone. Your limit is never shown to the AI."
-            : "Practice mode: the seller is simulated. Your budget stays private &mdash; the agent never sees it in a prompt, and a rule check blocks any message that could reveal it."}
+            : "Practice mode: the seller is simulated. Your budget stays private: the agent never sees it in a prompt, and a rule check blocks any message that could reveal it."}
         </p>
 
         <section className={styles.section}>
@@ -297,6 +291,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
               </select>
             </label>
           )}
+          <CategoryOtherHint isCopilot={isCopilot} category={category} />
           <label className={styles.label}>
             Seller&rsquo;s asking price (RM)
             <input
@@ -466,7 +461,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
           className={styles.startButton}
           data-testid="start-negotiation"
         >
-          {busy ? "Starting…" : "Start negotiating"}
+          {busy ? "Starting\u2026" : "Start negotiating"}
         </Button>
       </form>
 
@@ -556,5 +551,14 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
         )}
       </section>
     </div>
+  );
+}
+
+export function CategoryOtherHint({ isCopilot, category }: { isCopilot: boolean; category: ListingCategory }) {
+  if (!isCopilot || category !== "other") return null;
+  return (
+    <p className={styles.note}>
+      General guidance only. No category-specific notes.
+    </p>
   );
 }

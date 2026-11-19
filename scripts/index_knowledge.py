@@ -19,6 +19,13 @@ EVAL_QUERIES = [
     ("laptops", "how do I check laptop battery wear", "cycle count"),
     ("laptops", "laptop gets very hot and the fan is loud", "thermal paste"),
     ("laptops", "the hinge looks loose", "hinge"),
+    ("cameras", "how many photos has the camera taken", "shutter count"),
+    ("cameras", "there is fungus or haze inside the lens", "fungus"),
+    ("consoles", "the controller stick moves by itself", "drift"),
+    ("furniture", "how do I tell if a mattress has bed bugs", "bed bugs"),
+    ("appliances", "the fridge does not cool properly", "door seals"),
+    ("appliances", "how do I check an air conditioner", "compressor"),
+    ("other", "why is the seller getting rid of it", "reason for selling"),
 ]
 
 

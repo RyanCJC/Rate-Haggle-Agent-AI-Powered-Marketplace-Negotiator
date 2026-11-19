@@ -47,7 +47,7 @@ def search_knowledge(
     vector = to_vector(embedder.embed([query])[0])
     rows = conn.execute(
         "SELECT source, text, 1 - (embedding <=> %s::vector) FROM knowledge_chunks "
-        "WHERE embedder = %s AND (%s::text IS NULL OR category = %s) "
+        "WHERE embedder = %s AND (%s::text IS NULL OR category = %s OR category = 'general') "
         "ORDER BY embedding <=> %s::vector LIMIT %s",
         (vector, embedder.name, category, category, vector, k),
     ).fetchall()

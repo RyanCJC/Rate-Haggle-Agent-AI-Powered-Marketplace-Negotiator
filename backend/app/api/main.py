@@ -1,16 +1,17 @@
 import asyncio
 import json
-import os
+import logging
 import time
 from contextlib import asynccontextmanager
 
 import psycopg
-from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.app.api.runs import PgRuns
@@ -18,15 +19,34 @@ from backend.app.api.schemas import Decision, Pickup, Reply, StartRequest
 from backend.app.api.service import Conflict, NotFound, Rejected, Service, Unavailable
 from backend.app.boundaries.calendar_port import McpCalendarPort
 from backend.app.boundaries.session import McpSession
+from backend.app.knowledge.categories import resolve_category
+from backend.app.knowledge.embed import FastEmbedder
+from backend.app.knowledge.lookup import KnowledgeSearch
 from backend.app.llm.client import LLMClient
 from backend.app.llm.fake import RuleBasedLLM
+from backend.app.logs import configure_logging
 from backend.app.memory.models import Preferences, check_profile_id
 from backend.app.memory.store import PgMemory
+from backend.app.settings import Settings
 from backend.app.sim.personas import get_persona
+
+logger = logging.getLogger("haggle.app")
 
 CALENDAR = "backend.app.boundaries.calendar_server"
 STREAM_SECONDS = 900  # one stream never lives longer than this; the client reconnects
 ENDING = {"finished", "failed", "lost", "stalled"}
+
+def checkpoint_pool(url: str) -> ConnectionPool:
+    """Connections to the checkpoint store are checked before each use, so one the database
+    closed while the server was idle is replaced instead of failing a request."""
+    return ConnectionPool(
+        url,
+        min_size=1,
+        max_size=10,
+        kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+        check=ConnectionPool.check_connection,
+        open=False,  # the `with` block below opens it
+    )
 
 
 def call(fn, *args):
@@ -75,7 +95,11 @@ async def stream(
     while time.monotonic() < deadline:
         if await request.is_disconnected():
             return
-        snap = await run_in_threadpool(service.snapshot, run_id)
+        try:
+            snap = await run_in_threadpool(service.snapshot, run_id)
+        except NotFound:  # the run was deleted while this stream was open
+            yield sse("done", {"status": "lost"})
+            return        
         trace = snap["trace"]
         while sent < len(trace):
             yield sse("trace", trace[sent], sent)
@@ -100,13 +124,21 @@ def create_app(
             app.state.service = service
             yield
             return
-        load_dotenv()
-        url = os.environ["DATABASE_URL"]
-        live = os.getenv("HAGGLE_LLM") == "live"
+        settings = Settings.load()
+        configure_logging(Settings.from_env().log_level)
+        logger.info(
+            "starting: llm_mode=%s llm_model=%s embed_model=%s",
+            settings.llm_mode,
+            settings.llm_model or "-",
+            settings.embed_model,
+        )
+        url = settings.require_database_url()
+        live = settings.llm_mode == "live"
         with (
-            PostgresSaver.from_conn_string(url) as saver,
+            checkpoint_pool(url) as pool,
             McpSession(CALENDAR, env={"DATABASE_URL": url}) as session,
         ):
+            saver = PostgresSaver(pool)
             saver.setup()
             app.state.service = Service(
                 saver,
@@ -114,13 +146,18 @@ def create_app(
                 PgRuns(url),
                 llm_factory=LLMClient if live else RuleBasedLLM,
                 memory=PgMemory(url),
+                clarify=True,
+                knowledge=KnowledgeSearch(url, FastEmbedder),
             )
             yield
 
     app = FastAPI(title="Haggle", lifespan=lifespan)
-    origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
-    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"],
-                       allow_headers=["*"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(Settings.from_env().cors_origins),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     def health():
@@ -137,6 +174,11 @@ def create_app(
                 get_persona(body.persona)
             except Exception:  # noqa: BLE001 - any lookup failure means an unknown persona
                 raise HTTPException(422, f"unknown persona: {body.persona}") from None
+        category, guessed = (
+            resolve_category(body.category, body.item_title, body.listing_text)
+            if copilot
+            else (None, False)
+        )
         config = {
             "asking": str(body.asking),
             "budget": str(body.budget),
@@ -147,7 +189,8 @@ def create_app(
             "mode": body.mode,
             "item_title": body.item_title,
             "seller_opening": body.seller_opening,
-            "category": body.category if copilot else None,
+            "category": category,
+            "category_guessed": guessed,
             "listing_text": body.listing_text if copilot else None,
             "comparables": (
                 [str(price) for price in body.comparables]
@@ -235,7 +278,8 @@ def create_app(
         memory = memory_of(request)
         if not title.strip():
             return {"deals": []}
-        deals = stored(memory.similar_deals, pid, title, category or None, 3)
+        resolved, _ = resolve_category(category or None, title, None)
+        deals = stored(memory.similar_deals, pid, title, resolved, 3)
         return {"deals": [deal.public() for deal in deals]}
 
     @app.delete("/profile/deals/{run_id}")

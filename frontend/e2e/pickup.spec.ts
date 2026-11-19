@@ -35,14 +35,27 @@ async function screenshot(page: Page, name: string): Promise<void> {
 
 async function startCopilot(
   page: Page,
-  options: { listing?: string; comparables?: string } = {},
+  options: {
+    item_title?: string;
+    category?: string;
+    persona?: string;
+    listing?: string;
+    comparables?: string;
+  } = {},
 ): Promise<string> {
   await page.goto("/");
   await assertLight(page);
   await page.getByRole("button", { name: "Copilot (real seller)" }).click();
-  await page.getByRole("textbox", { name: "Item title (optional)" }).fill("Dell monitor");
+  await page.getByRole("textbox", { name: "Item title (optional)" }).fill(options.item_title ?? "Dell monitor");
   await page.getByRole("textbox", { name: /asking price/i }).fill("1200");
   await page.getByRole("textbox", { name: /maximum budget/i }).fill("1000");
+  if (options.category) {
+    await page.getByLabel("Category").selectOption(options.category);
+  }
+  if (options.persona) {
+    const personaLabel = options.persona.charAt(0).toUpperCase() + options.persona.slice(1) + " seller";
+    await page.getByRole("button", { name: personaLabel }).click();
+  }
   if (options.listing) {
     await page.getByLabel("Listing text (optional)").fill(options.listing);
   }

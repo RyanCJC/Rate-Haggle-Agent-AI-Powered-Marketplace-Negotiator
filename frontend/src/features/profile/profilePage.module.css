@@ -5,6 +5,17 @@
   width: min(100%, 980px);
   margin: 0 auto;
   padding: var(--space-4);
+  position: relative;
+}
+
+.profile > button[data-testid="profile-back"] {
+  position: fixed;
+  left: 200px;
+  bottom: 30px;
+  z-index: var(--z-dropdown);
+  background: var(--color-surface-2);
+  border: var(--elev-1);
+  border-radius: var(--radius);
 }
 
 .header h1,

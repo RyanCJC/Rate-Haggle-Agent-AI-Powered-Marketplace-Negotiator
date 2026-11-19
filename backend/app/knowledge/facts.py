@@ -3,15 +3,15 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from .categories import CATEGORIES
+
 Status = Literal["confirmed", "claimed", "missing", "conflicting"]
 
 DEFAULT_KEYS = ("condition", "age", "warranty", "defects", "accessories")
 # Edit these to match the categories in your seed data (the seed script prints them).
-EXTRA_KEYS = {
-    "monitors": ("size_inch", "refresh_rate"),
-    "phones": ("storage", "battery_health"),
-    "laptops": ("storage",),
-}
+EXTRA_KEYS = {c.name: c.extra_keys for c in CATEGORIES if c.extra_keys}
+
+
 ADDITIVE_KEYS = {"accessories"}  # several values are normal, not a conflict
 
 _FLAGS = re.IGNORECASE
@@ -28,6 +28,8 @@ _PATTERNS = {
     "refresh_rate": r"\b(\d{2,3})\s*hz\b",
     "storage": r"\b(\d{2,4}\s*(?:gb|tb))\b",
     "battery_health": r"\bbattery(?: health)?\s*:?\s*(\d{2,3})\s*%|\b(\d{2,3})\s*%\s*battery\b",
+    "shutter_count": r"\b(\d{1,3}(?:,\d{3})+|\d{3,6})\s*(?:shutter count|shutter actuations?"
+    r"|actuations?|clicks)\b|\bshutter count\s*:?\s*(\d{1,3}(?:,\d{3})+|\d{3,6})\b",
 }
 
 
