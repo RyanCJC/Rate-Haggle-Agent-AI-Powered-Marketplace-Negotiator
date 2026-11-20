@@ -9,7 +9,28 @@ import type {
 } from "./types";
 import { getProfileId } from "./lib/profile";
 
-const BASE: string = import.meta.env.VITE_API_URL ?? "/api";
+let _apiBase: string = (() => {
+  const raw = import.meta.env.VITE_API_BASE ?? "";
+  const trimmed = raw.replace(/\/+$/, "");
+  return trimmed || "/api";
+})();
+
+export function apiUrl(path: string): string {
+  return `${_apiBase}${path}`;
+}
+
+// Test seam: override the resolved base URL.
+export function setApiBaseForTesting(base: string): void {
+  _apiBase = base.replace(/\/+$/, "") || "/api";
+}
+
+export function resetApiBaseForTesting(): void {
+  _apiBase = (() => {
+    const raw = import.meta.env.VITE_API_BASE ?? "";
+    const trimmed = raw.replace(/\/+$/, "");
+    return trimmed || "/api";
+  })();
+}
 
 export interface ApiError extends Error {
   status: number;
@@ -20,7 +41,7 @@ export interface ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
-  const response = await fetch(`${BASE}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers,
   });
@@ -138,4 +159,4 @@ export const bookPickup = (id: string, startAt: string) =>
 export const cancelPickup = (id: string) =>
   request<CancelPickupResult>(`/negotiations/${id}/pickup`, { method: "DELETE" });
 
-export const eventsUrl = (id: string) => `${BASE}/negotiations/${id}/events`;
+export const eventsUrl = (id: string) => apiUrl(`/negotiations/${id}/events`);

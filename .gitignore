@@ -14,3 +14,4 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/e2e/.runs.json
 eval/reports/dev_*
+.fastembed/

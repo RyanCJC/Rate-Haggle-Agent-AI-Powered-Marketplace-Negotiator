@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { apiUrl, resetApiBaseForTesting, setApiBaseForTesting } from "./api";
 import { bookPickup, cancelPickup, getPickupOptions, replyToSeller } from "./api";
 
 afterEach(() => {
@@ -89,5 +90,36 @@ describe("replyToSeller 422 errors", () => {
     await expect(replyToSeller("run-1", "seller reply")).rejects.toMatchObject({
       message: "Please check your input",
     });
+  });
+});
+
+describe("apiUrl", () => {
+  afterEach(() => {
+    resetApiBaseForTesting();
+  });
+
+  it("falls back to /api when VITE_API_BASE is unset", () => {
+    setApiBaseForTesting("/api");
+    expect(apiUrl("/negotiations")).toBe("/api/negotiations");
+    expect(apiUrl("/profile/deals")).toBe("/api/profile/deals");
+  });
+
+  it("uses VITE_API_BASE without trailing slash", () => {
+    setApiBaseForTesting("https://a.vercel.app");
+    expect(apiUrl("/negotiations")).toBe("https://a.vercel.app/negotiations");
+    expect(apiUrl("/profile/similar?title=x&category=y")).toBe(
+      "https://a.vercel.app/profile/similar?title=x&category=y",
+    );
+  });
+
+  it("strips trailing slash from VITE_API_BASE", () => {
+    setApiBaseForTesting("https://a.vercel.app/");
+    expect(apiUrl("/negotiations")).toBe("https://a.vercel.app/negotiations");
+    expect(apiUrl("/profile/deals/123")).toBe("https://a.vercel.app/profile/deals/123");
+  });
+
+  it("strips multiple trailing slashes", () => {
+    setApiBaseForTesting("https://a.vercel.app///");
+    expect(apiUrl("/negotiations")).toBe("https://a.vercel.app/negotiations");
   });
 });

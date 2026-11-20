@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: haggle-api
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt && python scripts/warm_embedder.py
+    startCommand: uvicorn backend.app.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: LOG_LEVEL
+        value: INFO
+      - key: FASTEMBED_CACHE_PATH
+        value: /opt/render/project/src/.fastembed
+      - key: DATABASE_URL
+        sync: false
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

@@ -602,10 +602,15 @@ NaiveBuyerLLM test doubles and run offline.
 
 ## Deployment notes
 
-The repo contains no Dockerfile, `docker-compose.yml`, or CI workflow, so there is no codified
-deployment path. The backend is a standard FastAPI app (`uvicorn backend.app.api.main:app`) and the
-frontend is a standard Vite build (`npm run build` → `dist/`), deployable to any host that runs
-Python 3.12 + Node and can reach the configured Postgres database.
+The backend runs as a Render free web service (`render.yaml`) and the frontend on Vercel
+(`frontend/vercel.json`). The backend needs a Postgres database with the pgvector extension
+(Supabase works; use the Session pooler connection string). Set these env vars on Render:
+DATABASE_URL, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, CORS_ORIGINS. Set VITE_API_BASE on Vercel
+(the frontend build reads it at build time; leave empty to use the dev proxy to /api).
+The deployed demo uses the live model, with the key stored only in Render's settings. There is no
+login, so anyone with the URL can start runs and use the model quota (calls are limited to 13 per
+minute per server process). The free service sleeps when idle, so the first request after a gap is
+slow.
 
 ---
 
