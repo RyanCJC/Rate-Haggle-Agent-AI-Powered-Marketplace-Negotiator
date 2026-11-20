@@ -4,7 +4,7 @@ services:
     runtime: python
     region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt && python scripts/warm_embedder.py
+    buildCommand: pip install -r requirements.txt && PYTHONPATH=. python scripts/warm_embedder.py
     startCommand: uvicorn backend.app.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
