@@ -1,11 +1,15 @@
 import type {
+  BookedPickup,
   CancelPickupResult,
   Deal,
+  McpCall,
+  McpServer,
   PickupOptions,
   Preferences,
+  SellerView,
+  SellerViewResult,
   Snapshot,
   StartBody,
-  BookedPickup,
 } from "./types";
 import { getProfileId } from "./lib/profile";
 
@@ -144,6 +148,15 @@ export const replyToSeller = (id: string, reply: string, sentText?: string) =>
 export const stopRun = (id: string) =>
   request<{ accepted: boolean }>(`/negotiations/${id}/stop`, { method: "POST" });
 
+export const getCapabilities = () =>
+  request<{ marketplace_channel: boolean }>("/capabilities");
+
+export const sendToMarketplace = (id: string, sentText?: string) =>
+  request<{ accepted: boolean }>(`/negotiations/${id}/send`, {
+    method: "POST",
+    body: JSON.stringify(sentText !== undefined ? { sent_text: sentText } : {}),
+  });
+
 export const resumeRun = (id: string) =>
   request<{ accepted: boolean }>(`/negotiations/${id}/resume`, { method: "POST" });
 
@@ -160,3 +173,19 @@ export const cancelPickup = (id: string) =>
   request<CancelPickupResult>(`/negotiations/${id}/pickup`, { method: "DELETE" });
 
 export const eventsUrl = (id: string) => apiUrl(`/negotiations/${id}/events`);
+
+export const getConnections = () => request<{ servers: McpServer[] }>("/connections");
+
+export const getMcpCalls = (runId: string) =>
+  request<{ calls: McpCall[]; note: string }>(
+    `/negotiations/${encodeURIComponent(runId)}/mcp-calls`,
+  );
+
+export const getSellerView = (runId: string): Promise<SellerViewResult> =>
+  request<SellerView>(`/negotiations/${encodeURIComponent(runId)}/seller-view`)
+    .then((data) => ({ kind: "ok", data } as const))
+    .catch((problem) => {
+      const error = problem as Partial<ApiError>;
+      if (error.status === 409) return { kind: "not-marketplace" } as const;
+      throw problem;
+    });

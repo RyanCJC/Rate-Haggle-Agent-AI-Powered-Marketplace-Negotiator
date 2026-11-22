@@ -12,10 +12,15 @@ It plays two roles:
 Finished Copilot negotiations can be remembered under an anonymous per-browser profile, and
 completed deals surface as "Similar past deals" on Home and as private history notes on the Item tab
 of an active Copilot run.
-
 See also [docs/copilot-mode.md](docs/copilot-mode.md) and [docs/profile-memory.md](docs/profile-memory.md).
 
 
+**Live demo:** https://haggle-xi.vercel.app
+
+The demo runs on free hosting, so the first request after a quiet period can take up to a minute
+while the backend wakes up. There is no login, so please keep it to a few test negotiations.
+
+---
 
 ## Screenshots
 
@@ -33,7 +38,7 @@ Home, a run waiting for your approval, the Copilot composer, and the outcome of 
 - **Two modes:** Practice (simulated seller, LangGraph-run) and Copilot (human-relayed, persisted in
   Postgres checkpoints so a run survives reloads and server restarts).
 - **Human-in-the-loop:** nothing closes without your explicit "approve" (`approve_close` autonomy,
-  sometimes called Level 2 in the UI text). The agent negotiates and pauses at the close gate
+  shown in the UI as "Ask me before closing"). The agent negotiates and pauses at the close gate
   waiting for your OK; in Copilot mode it also pauses before every seller message so you can review
   and edit the draft.
 - **Safety guards:** deterministic code validators block over-budget offers, price leaks, private
@@ -550,7 +555,7 @@ npm run e2e
 ```
 
 The backend suite runs entirely offline (`backend/tests/conftest.py` sets `HAGGLE_LLM=offline`).
-At the time of writing: 481 backend tests, 89 frontend unit tests and 50 end-to-end tests.
+At the time of writing: 489 backend tests, 97 frontend unit tests and 50 end-to-end tests.
 Playwright runs at 1440×900 in light theme only. The e2e suite starts the FastAPI backend (with the
 offline model) and the Vite dev server itself (`frontend/e2e/global-setup.ts`) and cleans negotiation
 runs and profile rows afterwards (`frontend/e2e/global-teardown.ts` -> `scripts/delete_run.py` /
@@ -601,6 +606,8 @@ NaiveBuyerLLM test doubles and run offline.
 ---
 
 ## Deployment notes
+
+The public demo is at https://haggle-xi.vercel.app (frontend on Vercel, backend on Render, database on Supabase).
 
 The backend runs as a Render free web service (`render.yaml`) and the frontend on Vercel
 (`frontend/vercel.json`). The backend needs a Postgres database with the pgvector extension

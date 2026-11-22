@@ -118,9 +118,16 @@ export function gateTitle(question: Question): string {
 }
 
 export function statusChipLabel(question: Question | null, status: Status = "running"): string {
-  if (question?.gate === "seller_reply") return "Waiting for your reply";
+  if (question?.gate === "seller_reply") {
+    if (question.channel === "marketplace") return "Waiting for your OK to send";
+    return "Waiting for your reply";
+  }
   if (question?.gate === "close_deal") return "Waiting for approval";
   return STATUS_CHIP_LABEL[status] ?? "Running";
+}
+
+export function shouldShowTyping(status: Status, question: Question | null): boolean {
+  return status === "running" && question === null;
 }
 
 export const statusLabel = statusChipLabel;

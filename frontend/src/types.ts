@@ -6,6 +6,7 @@ export type Status =
   | "stalled"
   | "lost";
 export type Mode = "simulate" | "copilot";
+export type Channel = "manual" | "marketplace";
 export type Autonomy = "auto" | "approve_close";
 export type Style = "aggressive" | "balanced" | "safe";
 export type PickupHours = "any" | "morning" | "afternoon" | "evening";
@@ -22,7 +23,7 @@ export type ListingCategory =
 export type FactStatus = "confirmed" | "claimed" | "conflicting" | "missing";
 export type Question =
   | { gate: "close_deal"; price: string | null; draft?: string }
-  | { gate: "seller_reply"; kind: "offer" | "question"; price: string | null; draft: string }
+  | { gate: "seller_reply"; kind: "offer" | "question"; price: string | null; draft: string; channel?: "marketplace" }
   | { gate: "book_pickup"; price: string | null; draft?: string };
 
 export interface ItemFact {
@@ -69,6 +70,7 @@ export interface Snapshot {
     autonomy: Autonomy;
     seed: number;
     mode?: Mode;
+    channel?: Channel;
     item_title?: string | null;
     seller_opening?: string | null;
     category?: ListingCategory | null;
@@ -125,9 +127,74 @@ export interface StartBody {
   style: Style;
   autonomy: Autonomy;
   mode?: Mode;
+  channel?: Channel;
   item_title?: string | null;
   seller_opening?: string | null;
   category?: ListingCategory | null;
   listing_text?: string | null;
   comparables?: number[] | null;
 }
+
+export interface McpParam {
+  name: string;
+  type: string;
+  required: boolean;
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  params: McpParam[];
+}
+
+export type McpServerStatus = "connected" | "off" | "down";
+
+export interface McpServer {
+  id: string;
+  name: string;
+  transport: string;
+  status: McpServerStatus;
+  tools: McpTool[];
+}
+
+export interface McpCallArgs {
+  turn?: number;
+  price?: number;
+  start?: string;
+  slot?: string;
+  kind?: string;
+  start_at?: string;
+  from_iso?: string;
+  count?: number;
+  conversation?: string;
+  [key: string]: unknown;
+}
+
+export interface McpCall {
+  ts: string;
+  run: string | null;
+  server: string;
+  tool: string;
+  ok: boolean;
+  ms: number;
+  error: string | null;
+  args: McpCallArgs;
+}
+
+export interface SellerViewMessage {
+  turn: number;
+  from: "seller" | "buyer";
+  text: string;
+  price: number | null;
+}
+
+export interface SellerView {
+  found: boolean;
+  asking: number | null;
+  persona: string;
+  messages: SellerViewMessage[];
+}
+
+export type SellerViewResult =
+  | { kind: "ok"; data: SellerView }
+  | { kind: "not-marketplace" };

@@ -26,6 +26,7 @@ class Settings(BaseModel):
     embed_model: str = DEFAULT_EMBED_MODEL
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = DEFAULT_CORS
+    marketplace_channel: bool = False
 
     def require_database_url(self) -> str:
         if not self.database_url:
@@ -46,6 +47,7 @@ class Settings(BaseModel):
             embed_model=env.get("EMBED_MODEL") or DEFAULT_EMBED_MODEL,
             log_level=_log_level(env.get("LOG_LEVEL")),
             cors_origins=origins or DEFAULT_CORS,
+            marketplace_channel=env.get("MARKETPLACE_CHANNEL") == "on",
         )
 
     @classmethod

@@ -8,6 +8,7 @@ import {
   outcomeLabel,
   pickupLine,
   savings,
+  shouldShowTyping,
   statusChipLabel,
   stepLabel,
 } from "./state";
@@ -78,6 +79,26 @@ describe("getComposerState", () => {
     expect(getComposerState({ status: "running", question: null, outcome: "user_stopped" })).toBe("stopped");
     expect(getComposerState({ status: "finished", question: null, outcome: "deal" })).toBe("finished");
     expect(getComposerState({ status: "failed", question: null, outcome: null })).toBe("finished");
+  });
+});
+
+describe("shouldShowTyping", () => {
+  it("shows typing while the agent composes and no gate is pending", () => {
+    expect(shouldShowTyping("running", null)).toBe(true);
+  });
+  it("hides typing while waiting at a seller_reply gate, either channel", () => {
+    const manual = { gate: "seller_reply", kind: "offer", price: "880", draft: "RM 880" } as const;
+    const marketplace = { gate: "seller_reply", kind: "offer", price: "880", draft: "RM 880", channel: "marketplace" } as const;
+    expect(shouldShowTyping("running", manual)).toBe(false);
+    expect(shouldShowTyping("running", marketplace)).toBe(false);
+    expect(shouldShowTyping("waiting_for_approval", manual)).toBe(false);
+    expect(shouldShowTyping("waiting_for_approval", marketplace)).toBe(false);
+  });
+  it("hides typing at the close approval gate", () => {
+    expect(shouldShowTyping("running", { gate: "close_deal", price: "880" } as const)).toBe(false);
+  });
+  it("shows typing again once the user has replied and no gate is pending", () => {
+    expect(shouldShowTyping("running", null)).toBe(true);
   });
 });
 

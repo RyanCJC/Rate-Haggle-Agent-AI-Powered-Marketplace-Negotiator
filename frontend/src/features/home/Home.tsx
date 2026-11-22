@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { getPreferences, getSimilar, startRun } from "../../api";
+import { getCapabilities, getPreferences, getSimilar, startRun } from "../../api";
 import { Button } from "../../ui/button/button";
 import { Card } from "../../ui/card/card";
 import { Badge } from "../../ui/badge/badge";
@@ -8,7 +8,7 @@ import { marketCheck, parseComparables } from "../../lib/listing";
 import { dealSummary, formatMatch, shouldShowSimilarDeals } from "../../lib/memory";
 import { CATEGORIES } from "../../lib/categories";
 import { MarketCheckCard } from "../listing/MarketCheckCard";
-import type { Autonomy, Deal, ListingCategory, Mode, Style } from "../../types";
+import type { Autonomy, Channel, Deal, ListingCategory, Mode, Style } from "../../types";
 import styles from "./home.module.css";
 
 const PERSONAS = [
@@ -48,6 +48,15 @@ const AUTONOMY: { value: Autonomy; label: string; hint: string }[] = [
 
 const RECENT_KEY = "haggle-recents";
 
+function choiceProps(name: string, selected: boolean, onChange: () => void) {
+  return {
+    type: "radio" as const,
+    name,
+    checked: selected,
+    onChange,
+  };
+}
+
 type RecentItem = {
   id: string;
   asking: number;
@@ -83,15 +92,27 @@ function writeRecents(recents: RecentItem[]): void {
   }
 }
 
-export function Home({ onStart }: { onStart: (id: string) => void }) {
+export function Home({
+  onStart,
+  mode: initialMode = "simulate",
+  channel: initialChannel = "manual",
+  capabilities: initialCapabilities = null,
+}: {
+  onStart: (id: string) => void;
+  mode?: Mode;
+  channel?: Channel;
+  capabilities?: { marketplace_channel: boolean } | null;
+}) {
   const [asking, setAsking] = useState("1200");
   const [budget, setBudget] = useState("1000");
-  const [mode, setMode] = useState<Mode>("simulate");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [persona, setPersona] = useState("flexible");
   const [style, setStyle] = useState<Style>("balanced");
   const [similarDeals, setSimilarDeals] = useState<Deal[]>([]);
   const [similarFor, setSimilarFor] = useState("");
   const [autonomy, setAutonomy] = useState<Autonomy>("approve_close");
+  const [channel, setChannel] = useState<Channel>(initialChannel);
+  const [capabilities, setCapabilities] = useState<{ marketplace_channel: boolean } | null>(initialCapabilities);
   const [itemTitle, setItemTitle] = useState("");
   const [sellerOpening, setSellerOpening] = useState("");
   const [category, setCategory] = useState<ListingCategory>("other");
@@ -109,6 +130,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
   const valid = askingValid && budgetValid;
   const budgetAtOrAboveAsking = valid && budgetN >= askingN;
   const isCopilot = mode === "copilot";
+  const marketplaceEnabled = isCopilot && capabilities?.marketplace_channel === true;
   const similarKey = `${category}\u0000${itemTitle.trim()}`;
   const showSimilarDeals =
     similarFor === similarKey && shouldShowSimilarDeals(mode, itemTitle, similarDeals);
@@ -127,6 +149,21 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
       })
       .catch(() => {
         // The form remains available when profile memory is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void getCapabilities()
+      .then((caps) => {
+        if (active) setCapabilities(caps);
+      })
+      .catch(() => {
+        // Any failure means "off": no visible change, no error shown.
+        if (active) setCapabilities({ marketplace_channel: false });
       });
     return () => {
       active = false;
@@ -182,7 +219,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
       setBusy(true);
       try {
         const effectiveAutonomy = isCopilot ? "approve_close" : autonomy;
-        const body = {
+        const body: Record<string, unknown> = {
           asking: askingN,
           budget: budgetN,
           persona,
@@ -190,7 +227,6 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
           autonomy: effectiveAutonomy,
           mode,
           item_title: itemTitle.trim() || null,
-          seller_opening: sellerOpening.trim() || null,
           ...(isCopilot
             ? {
                 category,
@@ -201,7 +237,13 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
               }
             : {}),
         };
-        const { id } = await startRun(body);
+        if (channel === "marketplace") {
+          body.channel = "marketplace";
+          body.seed = 0;
+        } else if (isCopilot) {
+          body.seller_opening = sellerOpening.trim() || null;
+        }
+        const { id } = await startRun(body as never);
         const recents = readRecents();
         writeRecents([
           { id, asking: askingN, createdAt: new Date().toISOString(), mode, itemTitle: itemTitle.trim() || null },
@@ -219,6 +261,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
       autonomy,
       budgetN,
       budgetValid,
+      channel,
       category,
       comparablesText,
       isCopilot,
@@ -231,13 +274,6 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
       style,
     ],
   );
-
-  const choiceProps = (name: string, selected: boolean, onChange: () => void) => ({
-    type: "radio" as const,
-    name,
-    checked: selected,
-    onChange,
-  });
 
   return (
     <div className={styles.home}>
@@ -261,6 +297,9 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
             ? "You send every message yourself. Haggle never contacts anyone. Your limit is never shown to the AI."
             : "Practice mode: the seller is simulated. Your budget stays private: the agent never sees it in a prompt, and a rule check blocks any message that could reveal it."}
         </p>
+        {marketplaceEnabled && (
+          <ChannelChoice channel={channel} onChannelChange={setChannel} />
+        )}
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>The listing</h2>
@@ -371,7 +410,7 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
               Your budget is at or above the asking price, so there is little to haggle.
             </p>
           )}
-          {isCopilot && (
+          {isCopilot && channel !== "marketplace" && (
             <label className={styles.label}>
               Seller&rsquo;s first message
               <textarea
@@ -407,6 +446,32 @@ export function Home({ onStart }: { onStart: (id: string) => void }) {
                 );
               })}
             </div>
+          </section>
+        )}
+        {marketplaceEnabled && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>The seller</h2>
+            <p className={styles.who}>Who are you haggling with?</p>
+            <div className={styles.personas}>
+              {PERSONAS.map((p) => {
+                const selected = persona === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={[styles.personaCard, selected && styles.personaSelected].filter(Boolean).join(" ")}
+                    onClick={() => setPersona(p.id)}
+                    aria-pressed={selected}
+                  >
+                    <span className={styles.personaLabel}>{p.label}</span>
+                    <span className={styles.personaHint}>{p.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className={styles.note}>
+              The seller is simulated. You approve every message before it is sent.
+            </p>
           </section>
         )}
 
@@ -560,5 +625,43 @@ export function CategoryOtherHint({ isCopilot, category }: { isCopilot: boolean;
     <p className={styles.note}>
       General guidance only. No category-specific notes.
     </p>
+  );
+}
+
+export function ChannelChoice({
+  channel,
+  onChannelChange,
+}: {
+  channel: Channel;
+  onChannelChange: (value: Channel) => void;
+}) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>How messages reach the seller</h2>
+      <div className={styles.channelChoices}>
+        <label key="manual" className={styles.radioCard}>
+          <input
+            {...choiceProps("channel", channel === "manual", () => onChannelChange("manual"))}
+          />
+          <span>
+            <strong>I send them myself (real seller)</strong>
+            <span className={styles.hint}>
+              You review each draft, then paste the seller\u2019s reply back.
+            </span>
+          </span>
+        </label>
+        <label key="marketplace" className={styles.radioCard}>
+          <input
+            {...choiceProps("channel", channel === "marketplace", () => onChannelChange("marketplace"))}
+          />
+          <span>
+            <strong>Haggle sends them after I approve (simulated marketplace)</strong>
+            <span className={styles.hint}>
+              The seller is simulated. You approve every message before it is sent.
+            </span>
+          </span>
+        </label>
+      </div>
+    </section>
   );
 }

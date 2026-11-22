@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildTimeline, violationReason } from "./traceModel";
 import type { TraceEntry } from "../types";
+import { statusChipLabel } from "../state";
 
 function fsPath(urlPath: string): string {
   return urlPath.replace(/^\//, "").replace(/^([A-Za-z])\//, "$1:/");
@@ -263,5 +264,54 @@ describe("buildTimeline", () => {
     expect(clarifySteps).toHaveLength(1);
     expect(clarifySteps[0].label).toBe("Research before this offer");
     expect(clarifySteps[0].clarify?.tools).toEqual(["Read the listing", "Asked the seller"]);
+  });
+
+  it("labels a relayed execute as 'Sent through the simulated marketplace' for marketplace channel", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "execute", action: "offer", price: "820", relayed: true },
+    ];
+    const model = buildTimeline(trace, null, true, "marketplace");
+    const labels = model.turns.flatMap((turn) => turn.steps.map((step) => step.label));
+    expect(labels).toContain("Sent through the simulated marketplace");
+    expect(labels).not.toContain("You sent this to the seller");
+  });
+
+  it("labels a relayed execute as 'You sent this to the seller' for manual channel", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "execute", action: "offer", price: "820", relayed: true },
+    ];
+    const model = buildTimeline(trace, null, true, "manual");
+    const labels = model.turns.flatMap((turn) => turn.steps.map((step) => step.label));
+    expect(labels).toContain("You sent this to the seller");
+    expect(labels).not.toContain("Sent through the simulated marketplace");
+  });
+
+  it("labels a relayed execute as 'You sent this to the seller' when channel is absent", () => {
+    const trace: TraceEntry[] = [
+      { node: "plan", kind: "offer", price: "820", reason: "round 0" },
+      { node: "execute", action: "offer", price: "820", relayed: true },
+    ];
+    const model = buildTimeline(trace, null, true);
+    const labels = model.turns.flatMap((turn) => turn.steps.map((step) => step.label));
+    expect(labels).toContain("You sent this to the seller");
+  });
+});
+
+describe("statusChipLabel", () => {
+  it("marketplace seller_reply shows 'Waiting for your OK to send'", () => {
+    const question = { gate: "seller_reply", kind: "offer", price: "820", draft: "RM 820", channel: "marketplace" } as const;
+    expect(statusChipLabel(question, "waiting_for_approval")).toBe("Waiting for your OK to send");
+  });
+
+  it("manual seller_reply shows 'Waiting for your reply'", () => {
+    const question = { gate: "seller_reply", kind: "offer", price: "820", draft: "RM 820" } as const;
+    expect(statusChipLabel(question, "waiting_for_approval")).toBe("Waiting for your reply");
+  });
+
+  it("close_deal shows 'Waiting for approval'", () => {
+    const question = { gate: "close_deal", price: "820" } as const;
+    expect(statusChipLabel(question, "waiting_for_approval")).toBe("Waiting for approval");
   });
 });

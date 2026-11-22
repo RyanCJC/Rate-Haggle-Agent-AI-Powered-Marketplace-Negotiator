@@ -4,7 +4,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import type { Mode } from "../../types";
 import styles from "./topbar.module.css";
 
-export function TopBar({ mode, activePage }: { mode: Mode | null; activePage: "profile" | null }) {
+export function TopBar({ mode, activePage }: { mode: Mode | null; activePage: "profile" | "connections" | null }) {
   return (
     <header className={styles.topbar}>
       <div className={styles.topbar__inner}>
@@ -19,6 +19,13 @@ export function TopBar({ mode, activePage }: { mode: Mode | null; activePage: "p
             aria-current={activePage === "profile" ? "page" : undefined}
           >
             Profile
+          </a>
+          <a
+            className={[styles.topbar__link, activePage === "connections" && styles.topbar__linkActive].filter(Boolean).join(" ")}
+            href="#/connections"
+            aria-current={activePage === "connections" ? "page" : undefined}
+          >
+            Connections
           </a>
           {mode && (
             <Badge

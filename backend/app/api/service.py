@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from pathlib import Path
 
+from backend.app.boundaries.ports import ApprovedMcpSellerPort
+from backend.app.boundaries.recorder import CallRecorder
 from backend.app.core.calendar_rules import to_myt_iso
 from backend.app.core.pickup import describe_slot, pickup_message, prefer_hours
 from backend.app.graph.builder import build_graph, make_config, run_graph
@@ -83,6 +85,8 @@ class Service:
         memory=None,
         clarify: bool = False,
         knowledge=None,
+        marketplace=None,
+        recorder: CallRecorder | None = None,
     ):
         self.saver = saver
         self.calendar = calendar
@@ -91,6 +95,8 @@ class Service:
         self.memory_failures = 0  # memory trouble is counted, never allowed to fail a run
         self.clarify = clarify  # may the model look things up or ask the seller before replying
         self.knowledge = knowledge  # backend of search_knowledge: (query, category) -> passages
+        self.marketplace = marketplace  # shared MCP session for the marketplace channel (optional)
+        self.recorder = recorder  # shared MCP call recorder (optional)
         self.llm = llm_factory()
         self._pool = ThreadPoolExecutor(max_workers=workers)
         self._guard = threading.Lock()
@@ -124,6 +130,10 @@ class Service:
     def reply_run(self, run_id: str, reply: str, sent_text: str | None) -> None:
         """Copilot: the human pasted the seller's reply (and maybe edited what they sent)."""
         state = self._reserve_for_reply(run_id)
+        config = self._config(run_id)
+        if config.get("channel", "manual") == "marketplace":
+            self._release(run_id)
+            raise Conflict("this negotiation is on the marketplace channel: use /send")
         if sent_text:
             problems = check_draft(decision_of(state.values), sent_text, context(state.values))
             if problems:
@@ -131,6 +141,21 @@ class Service:
                 raise Rejected([p.public_message for p in problems])
         payload = {"action": "reply", "reply": reply, "sent_text": sent_text}
         self._pool.submit(self._drive, run_id, "reply", payload)
+
+    def send_run(self, run_id: str, sent_text: str | None) -> None:
+        """Copilot marketplace: the human approved the draft (optionally edited). Send via MCP."""
+        state = self._reserve_for_reply(run_id)
+        config = self._config(run_id)
+        if config.get("channel", "manual") != "marketplace":
+            self._release(run_id)
+            raise Conflict("this negotiation is not on the marketplace channel")
+        if sent_text:
+            problems = check_draft(decision_of(state.values), sent_text, context(state.values))
+            if problems:
+                self._release(run_id)
+                raise Rejected([p.public_message for p in problems])
+        payload = {"action": "reply", "sent_text": sent_text}
+        self._pool.submit(self._drive, run_id, "send", payload)
 
     def stop_run(self, run_id: str) -> None:
         """Copilot: the human ends the negotiation instead of relaying a reply."""
@@ -152,56 +177,68 @@ class Service:
     # -- pickup (copilot) -------------------------------------------------------------------
     def pickup_options(self, run_id: str, count: int = 5) -> dict:
         """Free slots plus a ready-to-send message for the seller. Code writes the message."""
-        config, values = self._deal_state(run_id)
-        booked = values.get("pickup")
-        if booked and booked.get("status") == "booked":
-            return {"slots": [], "labels": [], "message": None, "pickup": booked}
-        window = self._pickup_hours(config)
+        token = run_id_var.set(run_id)
         try:
-            # With a time-of-day preference, look at more free slots so preferred ones are found.
-            slots = self.calendar.propose_slots(count if window == "any" else min(count * 3, 24))
-        except CalendarError as error:
-            raise Unavailable("the calendar is unavailable, try again") from error
-        slots = prefer_hours(slots, window, count)
-        return {
-            "slots": slots,
-            "labels": [describe_slot(s) for s in slots],
-            "message": pickup_message(values["final_price"], slots),
-            "pickup": None,
-        }
+            config, values = self._deal_state(run_id)
+            booked = values.get("pickup")
+            if booked and booked.get("status") == "booked":
+                return {"slots": [], "labels": [], "message": None, "pickup": booked}
+            window = self._pickup_hours(config)
+            try:
+                # With a time-of-day preference, look at more free slots so preferred ones are found.
+                slots = self.calendar.propose_slots(count if window == "any" else min(count * 3, 24))
+            except CalendarError as error:
+                raise Unavailable("the calendar is unavailable, try again") from error
+            slots = prefer_hours(slots, window, count)
+            return {
+                "slots": slots,
+                "labels": [describe_slot(s) for s in slots],
+                "message": pickup_message(values["final_price"], slots),
+                "pickup": None,
+            }
+        finally:
+            run_id_var.reset(token)
 
     def book_pickup(self, run_id: str, start_at: str) -> dict:
         """Book the time the seller agreed to, through the same idempotent boundary."""
-        config, _ = self._deal_state(run_id)
-        key = f"{run_id}:pickup"  # the same negotiation always uses the same key
-        with self._lock(run_id):
-            try:
-                result = self.calendar.book_slot(key, run_id, start_at)
-            except CalendarError as error:
-                raise Unavailable("the calendar is unavailable, try again") from error
-            status = result["status"]
-            if status == "invalid":
-                raise Rejected([result.get("detail") or "that time cannot be booked"])
-            if status == "slot_taken":
-                raise Conflict("that time was just taken: pick another")
-            pickup = {"status": "booked", "start_at": to_myt_iso(result["start_at"])}
-            self._store_pickup(config, run_id, pickup)  # also heals a crash after booking
-            if status == "already_booked" and not result.get("same_slot"):
-                raise Conflict(
-                    f"a pickup is already booked for {describe_slot(pickup['start_at'])}: "
-                    "cancel it first"
-                )
-            return pickup
+        token = run_id_var.set(run_id)
+        try:
+            config, _ = self._deal_state(run_id)
+            key = f"{run_id}:pickup"  # the same negotiation always uses the same key
+            with self._lock(run_id):
+                try:
+                    result = self.calendar.book_slot(key, run_id, start_at)
+                except CalendarError as error:
+                    raise Unavailable("the calendar is unavailable, try again") from error
+                status = result["status"]
+                if status == "invalid":
+                    raise Rejected([result.get("detail") or "that time cannot be booked"])
+                if status == "slot_taken":
+                    raise Conflict("that time was just taken: pick another")
+                pickup = {"status": "booked", "start_at": to_myt_iso(result["start_at"])}
+                self._store_pickup(config, run_id, pickup)  # also heals a crash after booking
+                if status == "already_booked" and not result.get("same_slot"):
+                    raise Conflict(
+                        f"a pickup is already booked for {describe_slot(pickup['start_at'])}: "
+                        "cancel it first"
+                    )
+                return pickup
+        finally:
+            run_id_var.reset(token)
 
     def cancel_pickup(self, run_id: str) -> dict:
-        config, _ = self._deal_state(run_id)
-        with self._lock(run_id):
-            try:
-                result = self.calendar.cancel_booking(f"{run_id}:pickup")
-            except CalendarError as error:
-                raise Unavailable("the calendar is unavailable, try again") from error
-            self._store_pickup(config, run_id, None)
-            return {"status": result["status"]}
+        token = run_id_var.set(run_id)
+        try:
+            config, _ = self._deal_state(run_id)
+            with self._lock(run_id):
+                try:
+                    result = self.calendar.cancel_booking(f"{run_id}:pickup")
+                except CalendarError as error:
+                    raise Unavailable("the calendar is unavailable, try again") from error
+                self._store_pickup(config, run_id, None)
+                return {"status": result["status"]}
+        finally:
+            run_id_var.reset(token)
 
     # -- reading ----------------------------------------------------------------------------
 
@@ -378,8 +415,21 @@ class Service:
                 config = self.runs.get(run_id)
                 asking, budget = Decimal(config["asking"]), Decimal(config["budget"])
                 copilot = config.get("mode", "simulate") == "copilot"
+                channel = config.get("channel", "manual")
+                logger.info("run %s channel=%s", mode, channel)
                 if mode == "start":
-                    if copilot:
+                    if copilot and channel == "marketplace":
+                        if self.marketplace is None:
+                            raise RuntimeError("marketplace channel is not enabled")
+                        persona = get_persona(config["persona"])
+                        port = ApprovedMcpSellerPort(
+                            self.marketplace,
+                            conversation_id=run_id,
+                            asking=asking,
+                            persona=persona.name,
+                            seed=config["seed"],
+                        )
+                    elif copilot:
                         port = ManualSellerPort(config.get("seller_opening"))
                     else:
                         persona = get_persona(config["persona"])
@@ -400,7 +450,20 @@ class Service:
                         memory_prices=prices,
                     )
                 else:
-                    if copilot:
+                    if copilot and channel == "marketplace":
+                        if self.marketplace is None:
+                            raise RuntimeError("marketplace channel is not enabled")
+                        persona = get_persona(config["persona"])
+                        offers = current_state(self._graph(config, None), run_id)["our_offers"]
+                        port = ApprovedMcpSellerPort(
+                            self.marketplace,
+                            conversation_id=run_id,
+                            asking=asking,
+                            persona=persona.name,
+                            seed=config["seed"],
+                            replay=list(offers),
+                        )
+                    elif copilot:
                         port = ManualSellerPort()  # nothing to rebuild: the checkpoint holds it all
                     else:
                         # A restart-safe path: rebuild the seller from the offers in the checkpoint.
@@ -410,7 +473,7 @@ class Service:
                             asking, persona, seed, offers, with_opening=True
                         )
                     graph = self._graph(config, port)
-                    if mode in ("decide", "reply", "stop"):
+                    if mode in ("decide", "reply", "stop", "send"):
                         decide(graph, run_id, payload)
                     else:
                         approve(graph, run_id)

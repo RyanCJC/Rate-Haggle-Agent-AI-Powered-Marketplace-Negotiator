@@ -2,8 +2,10 @@ import json
 from datetime import datetime
 from decimal import Decimal
 
+from langgraph.types import interrupt
+
 from backend.app.core.calendar_rules import MYT, candidate_slots, validate_slot
-from backend.app.graph.ports import SellerClosed
+from backend.app.graph.ports import HumanStopped, SellerClosed
 
 from .session import McpSession
 
@@ -57,6 +59,63 @@ class McpSellerPort:
             raise SellerClosed
         self.turn += 1
         return reply["text"]
+
+
+class ApprovedMcpSellerPort:
+    """Seller port for Copilot marketplace mode: pauses at the seller_reply gate for human
+    approval before every outgoing draft, then sends through the MCP marketplace server.
+
+    Satisfies the SellerPort protocol: opening_text, send_offer, send_message. Wraps an
+    McpSellerPort and adds interrupt + resume, mirroring ManualSellerPort.
+    """
+
+    def __init__(
+        self,
+        session: McpSession,
+        conversation_id: str,
+        asking: Decimal,
+        persona: str,
+        seed: int = 0,
+        replay: list[Decimal | None] | tuple = (),
+    ):
+        self._inner = McpSellerPort(
+            session=session,
+            conversation_id=conversation_id,
+            asking=asking,
+            persona=persona,
+            seed=seed,
+            replay=replay,
+        )
+        self.sent_text: str | None = None
+
+    def opening_text(self) -> str | None:
+        return self._inner.opening_text()
+
+    def _ask(self, kind: str, price, draft: str) -> str:
+        answer = interrupt(
+            {
+                "gate": "seller_reply",
+                "kind": kind,
+                "price": None if price is None else str(price),
+                "draft": draft,
+                "channel": "marketplace",
+            }
+        )
+        if not isinstance(answer, dict) or answer.get("action") not in ("reply", "stop"):
+            raise ValueError("a seller reply or a stop is needed here")
+        if answer["action"] == "stop":
+            raise HumanStopped
+        self.sent_text = (answer.get("sent_text") or "").strip() or None
+        return str(answer.get("reply", ""))
+
+    def send_offer(self, price: Decimal, message: str) -> str:
+        self._ask("offer", price, message)
+        return self._inner.send_offer(price, message)
+
+    def send_message(self, message: str) -> str:
+        self._ask("question", None, message)
+        return self._inner.send_message(message)
+
 
 class CalendarError(Exception):
     """The calendar could not be reached or failed. The negotiation result is unaffected."""

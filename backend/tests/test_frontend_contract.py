@@ -64,3 +64,35 @@ def test_home_tsx_category_labels_match_backend() -> None:
             f"categories.ts label for {name!r} is {frontend_map.get(name)!r}, "
             f"expected {label!r}"
         )
+
+
+def test_types_ts_channel_matches_backend_startrequest() -> None:
+    """Channel union values in frontend/types.ts must match backend StartRequest.channel Literal."""
+    text = read_text("types.ts")
+    start = text.find("export type Channel")
+    assert start != -1, "types.ts does not define Channel"
+    end = text.find(";", start)
+    assert end != -1, "types.ts Channel block not terminated"
+    body = text[start:end]
+    frontend_channels = {
+        m.strip().strip('"').strip("'")
+        for m in re.findall(r'["\']([^"\']+)["\']', body)
+    }
+
+    # Parse backend StartRequest.channel Literal from schemas.py.
+    schema_text = (ROOT.parent.parent / "backend" / "app" / "api" / "schemas.py").read_text()
+    start = schema_text.find("channel: Literal[")
+    assert start != -1, "schemas.py does not define StartRequest.channel Literal"
+    end = schema_text.find("]", start)
+    assert end != -1, "schemas.py StartRequest.channel Literal not terminated"
+    body = schema_text[start:end]
+    backend_channels = {
+        m.strip().strip('"').strip("'")
+        for m in re.findall(r'["\']([^"\']+)["\']', body)
+    }
+
+    missing = backend_channels - frontend_channels
+    extra = frontend_channels - backend_channels
+    assert not missing, f"frontend Channel is missing backend values: {sorted(missing)}"
+    assert not extra, f"frontend Channel has unexpected values: {sorted(extra)}"
+

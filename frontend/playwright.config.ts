@@ -33,7 +33,7 @@ export default defineConfig({
           ? path.join(ROOT, ".venv", "Scripts", "python.exe") + " -m uvicorn backend.app.api.main:app --port 8000"
           : path.join(ROOT, ".venv", "bin", "python") + " -m uvicorn backend.app.api.main:app --port 8000",
       cwd: ROOT,
-      env: { ...process.env, PYTHONPATH: ROOT, HAGGLE_LLM: "offline" },
+      env: { ...process.env, PYTHONPATH: ROOT, HAGGLE_LLM: "offline", MARKETPLACE_CHANNEL: "on" },
       // e2e must never call a real LLM: offline is opt-in (see backend/app/settings.py)
       url: "http://127.0.0.1:8000/health",
       reuseExistingServer: REUSE_SERVERS,

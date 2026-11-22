@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { replyToSeller, stopRun } from "../../api";
+import { replyToSeller, sendToMarketplace, stopRun } from "../../api";
 import { Button } from "../../ui/button/button";
 import { replyArguments } from "./replyPayload";
 import type { Question } from "../../types";
@@ -59,7 +59,29 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
     try {
       const args = replyArguments(question.kind, reply, question.draft, editedDraft);
       await replyToSeller(runId, args.reply, args.sentText);
-        } catch (problem) {
+    } catch (problem) {
+      const requestError = problem as RequestError;
+      if (requestError.messages?.length) {
+        setError(requestError.messages.join(" "));
+        setEditOpen(true);
+      } else {
+        setError(problem instanceof Error ? problem.message : String(problem));
+      }
+    } finally {
+      setInFlight(false);
+    }
+  }
+
+  async function submitMarketplaceSend(event?: FormEvent): Promise<void> {
+    event?.preventDefault();
+    if (!question || inFlight) return;
+    const sentText = editOpen && editedDraft.trim() ? editedDraft : undefined;
+    setInFlight(true);
+    setError(null);
+    setNotice("");
+    try {
+      await sendToMarketplace(runId, sentText);
+    } catch (problem) {
       const requestError = problem as RequestError;
       if (requestError.messages?.length) {
         setError(requestError.messages.join(" "));
@@ -95,12 +117,18 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
   if (!question) return null;
 
   const isQuestion = question.kind === "question";
+  const isMarketplace = question.channel === "marketplace";
 
   return (
     <section className={styles.composer} aria-labelledby="copilot-composer-title" data-testid="copilot-composer">
       <h2 id="copilot-composer-title" className={styles.title}>
         {isQuestion ? "The agent wants to ask the seller" : "Next message"}
       </h2>
+      {isMarketplace && (
+        <p className={styles.helper}>
+          Sent through the simulated marketplace when you approve.
+        </p>
+      )}
       <div className={styles.draftBlock}>
         <label className={styles.label} htmlFor="copilot-draft">Draft to send</label>
         <textarea
@@ -112,15 +140,17 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
           rows={3}
           data-testid="copilot-draft"
         />
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => void copyDraft()}
-          className={styles.copyButton}
-          data-testid="copilot-copy"
-        >
-          Copy
-        </Button>
+        {!isMarketplace && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void copyDraft()}
+            className={styles.copyButton}
+            data-testid="copilot-copy"
+          >
+            Copy
+          </Button>
+        )}
       </div>
 
       <details
@@ -145,56 +175,96 @@ export function CopilotComposer({ runId, question }: CopilotComposerProps) {
         </p>
       </details>
 
-      <form className={styles.replyForm} onSubmit={(event) => void submitReply(event)}>
-        <label className={styles.label} htmlFor="copilot-reply">Paste the seller's reply</label>
-        <textarea
-          ref={replyRef}
-          id="copilot-reply"
-          className={styles.textarea}
-          value={reply}
-          onChange={(event) => setReply(event.target.value)}
-          onKeyDown={onReplyKeyDown}
-          rows={4}
-          maxLength={4000}
-          data-testid="copilot-reply"
-        />
-        <div className={styles.counter} aria-live="polite">{reply.length}/4000</div>
-        {error && <p id="copilot-reply-error" className={styles.error} role="alert" data-testid="copilot-error">{error}</p>}
-        <div className={styles.actions}>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!reply.trim() || inFlight}
-            loading={inFlight}
-            data-testid="copilot-send"
-          >
-            Send reply to agent
-          </Button>
-          {!confirmStop ? (
+      {!isMarketplace ? (
+        <form className={styles.replyForm} onSubmit={(event) => void submitReply(event)}>
+          <label className={styles.label} htmlFor="copilot-reply">Paste the seller's reply</label>
+          <textarea
+            ref={replyRef}
+            id="copilot-reply"
+            className={styles.textarea}
+            value={reply}
+            onChange={(event) => setReply(event.target.value)}
+            onKeyDown={onReplyKeyDown}
+            rows={4}
+            maxLength={4000}
+            data-testid="copilot-reply"
+          />
+          <div className={styles.counter} aria-live="polite">{reply.length}/4000</div>
+          {error && <p id="copilot-reply-error" className={styles.error} role="alert" data-testid="copilot-error">{error}</p>}
+          <div className={styles.actions}>
             <Button
-              type="button"
-              variant="secondary"
-              disabled={inFlight}
-              onClick={() => setConfirmStop(true)}
-              data-testid="copilot-end"
+              type="submit"
+              variant="primary"
+              disabled={!reply.trim() || inFlight}
+              loading={inFlight}
+              data-testid="copilot-send"
             >
-              End negotiation
-              </Button>
-            ) : (
-            <div className={styles.confirm} data-testid="copilot-stop-confirm">
-              <span>End this negotiation?</span>
-              <Button type="button" variant="danger" disabled={inFlight} onClick={() => void endNegotiation()}>
-                Yes, end it
-              </Button>
-              <Button type="button" variant="secondary" disabled={inFlight} onClick={() => setConfirmStop(false)}>
-                Keep negotiating
-              </Button>
-            </div>
-          )}
-        </div>
-        <p className={styles.helper}>You can close this tab. The negotiation waits for your reply.</p>
-        <div className={styles.live} aria-live="polite" data-testid="copilot-announcement">{notice}</div>
-      </form>
+              Send reply to agent
+            </Button>
+            {!confirmStop ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={inFlight}
+                onClick={() => setConfirmStop(true)}
+                data-testid="copilot-end"
+              >
+                End negotiation
+                </Button>
+              ) : (
+              <div className={styles.confirm} data-testid="copilot-stop-confirm">
+                <span>End this negotiation?</span>
+                <Button type="button" variant="danger" disabled={inFlight} onClick={() => void endNegotiation()}>
+                  Yes, end it
+                </Button>
+                <Button type="button" variant="secondary" disabled={inFlight} onClick={() => setConfirmStop(false)}>
+                  Keep negotiating
+                </Button>
+              </div>
+            )}
+          </div>
+          <p className={styles.helper}>You can close this tab. The negotiation waits for your reply.</p>
+          <div className={styles.live} aria-live="polite" data-testid="copilot-announcement">{notice}</div>
+        </form>
+      ) : (
+        <form className={styles.replyForm} onSubmit={(event) => void submitMarketplaceSend(event)}>
+          {error && <p id="copilot-reply-error" className={styles.error} role="alert" data-testid="copilot-error">{error}</p>}
+          <div className={styles.actions}>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={inFlight}
+              loading={inFlight}
+              data-testid="marketplace-send"
+            >
+              {inFlight ? "Sending\u2026" : "Send to marketplace"}
+            </Button>
+            {!confirmStop ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={inFlight}
+                onClick={() => setConfirmStop(true)}
+                data-testid="copilot-end"
+              >
+                End negotiation
+                </Button>
+              ) : (
+              <div className={styles.confirm} data-testid="copilot-stop-confirm">
+                <span>End this negotiation?</span>
+                <Button type="button" variant="danger" disabled={inFlight} onClick={() => void endNegotiation()}>
+                  Yes, end it
+                </Button>
+                <Button type="button" variant="secondary" disabled={inFlight} onClick={() => setConfirmStop(false)}>
+                  Keep negotiating
+                </Button>
+              </div>
+            )}
+          </div>
+          <p className={styles.helper}>You can close this tab. The negotiation waits for your OK.</p>
+          <div className={styles.live} aria-live="polite" data-testid="copilot-announcement">{notice}</div>
+        </form>
+      )}
     </section>
   );
 }

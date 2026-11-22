@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -15,9 +16,10 @@ from psycopg_pool import ConnectionPool
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.app.api.runs import PgRuns
-from backend.app.api.schemas import Decision, Pickup, Reply, StartRequest
+from backend.app.api.schemas import Decision, Pickup, Reply, SendRequest, StartRequest
 from backend.app.api.service import Conflict, NotFound, Rejected, Service, Unavailable
 from backend.app.boundaries.calendar_port import McpCalendarPort
+from backend.app.boundaries.recorder import CallRecorder
 from backend.app.boundaries.session import McpSession
 from backend.app.knowledge.categories import resolve_category
 from backend.app.knowledge.embed import FastEmbedder
@@ -33,6 +35,7 @@ from backend.app.sim.personas import get_persona
 logger = logging.getLogger("haggle.app")
 
 CALENDAR = "backend.app.boundaries.calendar_server"
+MARKETPLACE = "backend.app.boundaries.marketplace_server"
 STREAM_SECONDS = 900  # one stream never lives longer than this; the client reconnects
 ENDING = {"finished", "failed", "lost", "stalled"}
 
@@ -134,21 +137,32 @@ def create_app(
         )
         url = settings.require_database_url()
         live = settings.llm_mode == "live"
-        with (
-            checkpoint_pool(url) as pool,
-            McpSession(CALENDAR, env={"DATABASE_URL": url}) as session,
-        ):
+        with contextlib.ExitStack() as stack:
+            pool = stack.enter_context(checkpoint_pool(url))
+            recorder = CallRecorder()
+            calendar_session = stack.enter_context(
+                McpSession(CALENDAR, env={"DATABASE_URL": url}, recorder=recorder)
+            )
+            marketplace_session = None
+            if settings.marketplace_channel:
+                marketplace_session = stack.enter_context(
+                    McpSession(MARKETPLACE, recorder=recorder)
+                )
             saver = PostgresSaver(pool)
             saver.setup()
             app.state.service = Service(
                 saver,
-                McpCalendarPort(session),
+                McpCalendarPort(calendar_session),
                 PgRuns(url),
                 llm_factory=LLMClient if live else RuleBasedLLM,
                 memory=PgMemory(url),
                 clarify=True,
                 knowledge=KnowledgeSearch(url, FastEmbedder),
+                marketplace=marketplace_session,
+                recorder=recorder,
             )
+            app.state.calendar_session = calendar_session
+            app.state.marketplace_session = marketplace_session
             yield
 
     app = FastAPI(title="Haggle", lifespan=lifespan)
@@ -163,12 +177,86 @@ def create_app(
     def health():
         return {"ok": True}
 
+    @app.get("/capabilities")
+    def capabilities():
+        return {"marketplace_channel": Settings.from_env().marketplace_channel}
+
+    def _server_entry(session_id: str, name: str, session: McpSession | None) -> dict:
+        if session is None:
+            return {
+                "id": session_id,
+                "name": name,
+                "transport": "stdio",
+                "status": "off",
+                "tools": [],
+            }
+        try:
+            tools = session.list_tools()
+            return {
+                "id": session_id,
+                "name": name,
+                "transport": "stdio",
+                "status": "connected",
+                "tools": tools,
+            }
+        except Exception:  # noqa: BLE001 - a failing inspection is reported as "down"
+            return {
+                "id": session_id,
+                "name": name,
+                "transport": "stdio",
+                "status": "down",
+                "tools": [],
+            }
+
+    @app.get("/connections")
+    def connections(request: Request):
+        state = request.app.state
+        settings = Settings.from_env()
+        calendar_session = getattr(state, "calendar_session", None)
+        marketplace_session = getattr(state, "marketplace_session", None)
+        servers = [_server_entry("calendar", "haggle-calendar", calendar_session)]
+        if settings.marketplace_channel and marketplace_session is not None:
+            servers.append(
+                _server_entry("marketplace", "haggle-marketplace", marketplace_session)
+            )
+        else:
+            servers.append(
+                {
+                    "id": "marketplace",
+                    "name": "haggle-marketplace",
+                    "transport": "stdio",
+                    "status": "off",
+                    "tools": [],
+                }
+            )
+        return {"servers": servers}
+
+    @app.get("/negotiations/{run_id}/mcp-calls")
+    def mcp_calls(run_id: str, request: Request):
+        service = request.app.state.service
+        call(service._config, run_id)  # 404 if unknown run
+        recorder = service.recorder
+        return {
+            "calls": recorder.for_run(run_id) if recorder is not None else [],
+            "note": "Calls since this server process started.",
+        }
+
+    @app.get("/negotiations/{run_id}/seller-view")
+    def seller_view(run_id: str, request: Request):
+        service = request.app.state.service
+        config = call(service._config, run_id)  # 404 if unknown run
+        if config.get("channel", "manual") != "marketplace" or service.marketplace is None:
+            raise HTTPException(409, "this run does not use the marketplace server")
+        return service.marketplace.call("get_conversation", conversation_id=run_id)
+
     @app.post("/negotiations", status_code=201)
     def start(
         body: StartRequest, request: Request, x_profile_id: str | None = Header(default=None)
     ):
         profile_id = profile_of(x_profile_id) if x_profile_id else None
         copilot = body.mode == "copilot"
+        if body.channel == "marketplace" and not Settings.from_env().marketplace_channel:
+            raise HTTPException(400, "marketplace channel is not enabled on this server")
         if not copilot:  # a copilot run has a real seller, so the persona is ignored
             try:
                 get_persona(body.persona)
@@ -198,6 +286,7 @@ def create_app(
                 else None
             ),
             "profile_id": profile_id if copilot else None,
+            "channel": body.channel,
         }
         return {"id": request.app.state.service.start(config)}
 
@@ -218,6 +307,11 @@ def create_app(
     @app.post("/negotiations/{run_id}/reply", status_code=202)
     def reply(run_id: str, body: Reply, request: Request):
         call(request.app.state.service.reply_run, run_id, body.reply, body.sent_text)
+        return {"accepted": True}
+
+    @app.post("/negotiations/{run_id}/send", status_code=202)
+    def send(run_id: str, body: SendRequest, request: Request):
+        call(request.app.state.service.send_run, run_id, body.sent_text)
         return {"accepted": True}
 
     @app.post("/negotiations/{run_id}/stop", status_code=202)

@@ -1,4 +1,4 @@
-import type { Question, TraceEntry } from "../types";
+import type { Channel, Question, TraceEntry } from "../types";
 
 export type TraceNode =
   | "plan"
@@ -214,6 +214,7 @@ export function buildTimeline(
   trace: TraceEntry[],
   question: Question | null = null,
   copilot = false,
+  channel?: Channel,
 ): TimelineModel {
   const turns: Turn[] = [];
   const terminal: TraceStep[] = [];
@@ -284,7 +285,9 @@ export function buildTimeline(
         current.steps.push({
           node: "execute",
           label: execute.relayed
-            ? "You sent this to the seller"
+            ? channel === "marketplace"
+              ? "Sent through the simulated marketplace"
+              : "You sent this to the seller"
             : entry.action === "accept" || entry.action === "walk_away"
               ? "Close"
               : stepLabel("execute"),

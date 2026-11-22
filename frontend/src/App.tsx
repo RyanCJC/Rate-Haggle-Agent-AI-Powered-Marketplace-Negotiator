@@ -3,41 +3,37 @@ import { Home } from "./features/home/Home";
 import { Workspace } from "./features/negotiation/Workspace";
 import { TopBar } from "./components/shell/TopBar";
 import { ProfilePage } from "./features/profile/ProfilePage";
+import { ConnectionsPage } from "./features/connections/ConnectionsPage";
+import { parseRoute, type Route } from "./lib/routes";
 import type { Mode } from "./types";
 
-function readRun(): string | null {
-  const match = window.location.hash.match(/^#\/run\/([0-9a-f]+)$/);
-  return match ? match[1] : null;
-}
-
-function isProfileRoute(): boolean {
-  return window.location.hash === "#/profile";
-}
-
 export default function App() {
-  const [runId, setRunId] = useState<string | null>(readRun);
-  const [profileRoute, setProfileRoute] = useState(isProfileRoute);
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
   const [mode, setMode] = useState<Mode | null>(null);
 
   useEffect(() => {
     const onHash = () => {
-      setRunId(readRun());
-      setProfileRoute(isProfileRoute());
+      setRoute(parseRoute(window.location.hash));
       setMode(null);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  const activePage: "profile" | "connections" | null =
+    route.kind === "profile" ? "profile" : route.kind === "connections" ? "connections" : null;
+
   return (
     <div className="app">
-      <TopBar mode={runId ? mode : null} activePage={profileRoute ? "profile" : null} />
+      <TopBar mode={route.kind === "run" ? mode : null} activePage={activePage} />
       <main className="app__main">
-        {profileRoute ? (
+        {route.kind === "profile" ? (
           <ProfilePage />
-        ) : runId ? (
+        ) : route.kind === "connections" ? (
+          <ConnectionsPage runId={route.runId ?? null} />
+        ) : route.kind === "run" ? (
           <Workspace
-            runId={runId}
+            runId={route.runId}
             onHome={() => (window.location.hash = "")}
             onModeChange={setMode}
           />

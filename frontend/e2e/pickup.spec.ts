@@ -319,6 +319,7 @@ test.describe("Copilot pickup coordination", () => {
   });
 
   test("books a custom time and preserves rejected date and hour", async ({ page }) => {
+    test.setTimeout(180_000); // two full Copilot deals; each graph step costs a database round trip
     await startCopilotDeal(page);
     await openPickupOptions(page);
     await page.getByText("The seller suggested another time", { exact: true }).click();
@@ -346,6 +347,7 @@ test.describe("Copilot pickup coordination", () => {
   });
 
   test("refreshes after 409 taken and recovers from 503", async ({ page }) => {
+    test.setTimeout(180_000); // two full Copilot deals; each graph step costs a database round trip
     const id = await startCopilotDeal(page);
     let optionsRequests = 0;
     page.on("request", (request) => {

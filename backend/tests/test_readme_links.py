@@ -22,3 +22,9 @@ def test_the_docs_do_not_claim_there_is_no_offline_model():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "no offline fallback" not in text
     assert "always uses a live" not in text
+
+
+def test_no_docs_reference_the_render_service_url():
+    for doc in FILES:
+        text = doc.read_text(encoding="utf-8")
+        assert "onrender.com" not in text, f"{doc.relative_to(ROOT)} contains onrender.com"

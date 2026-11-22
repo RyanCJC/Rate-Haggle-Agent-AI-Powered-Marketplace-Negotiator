@@ -40,6 +40,7 @@ export function ActivityPanel({ trace, connection, snapshot }: ActivityPanelProp
     trace,
     snapshot?.question ?? null,
     snapshot?.config.mode === "copilot",
+    snapshot?.config.channel ?? undefined,
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const [showJump, setShowJump] = useState(false);

@@ -35,7 +35,7 @@ def run(port, clarify):
 
 
 def test_the_server_exposes_exactly_three_tools(session):
-    assert set(session.tools()) == {"open_conversation", "send_offer", "send_message"}
+    assert set(session.tools()) == {"open_conversation", "send_offer", "send_message", "get_conversation"}
 
 
 @pytest.mark.parametrize("persona", ["flexible", "evasive", "budget_prober", "term_changer"])

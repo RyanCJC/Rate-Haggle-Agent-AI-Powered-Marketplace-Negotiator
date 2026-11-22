@@ -12,8 +12,10 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { NotFoundScreen } from "./NotFoundScreen";
 import { CopilotComposer } from "./CopilotComposer";
 import { CopilotItemPanel } from "../listing/CopilotItemPanel";
+import { shouldShowTyping } from "../../state";
 import { useNegotiation } from "../../useNegotiation";
-import type { Mode } from "../../types";
+import { ConnectionsDrawer } from "../connections/ConnectionsDrawer";
+import type { Channel, Mode } from "../../types";
 import styles from "./workspace.module.css";
 
 export function Workspace({
@@ -97,6 +99,8 @@ export function Workspace({
   const waitingForApproval = snapshot.status === "waiting_for_approval" && !!question;
   const showCloseGate = waitingForApproval && question?.gate === "close_deal";
   const isCopilot = snapshot.config.mode === "copilot";
+  const runActive =
+    snapshot.status === "running" || snapshot.status === "waiting_for_approval";
   const finalMessage =
     isCopilot && snapshot.status === "finished" && snapshot.outcome === "deal"
       ? [...snapshot.history].reverse().find(([role]) => role === "buyer")?.[1] ?? null
@@ -106,6 +110,7 @@ export function Workspace({
     <ErrorBoundary>
       <div className={styles.workspace}>
         <SummaryStrip snapshot={snapshot} />
+        <ConnectionsDrawer runId={runId} runActive={runActive} />
 
         {showCloseGate && question && (
           <ApprovalPanel
@@ -118,14 +123,18 @@ export function Workspace({
         )}
 
         {finalMessage && (
-          <FinalMessagePanel message={finalMessage} onArrangePickup={handleArrangePickup} />
+          <FinalMessagePanel
+            message={finalMessage}
+            onArrangePickup={handleArrangePickup}
+            channel={snapshot?.config.channel ?? undefined}
+          />
         )}
 
         <div className={styles.split}>
           <div className={[styles.conversationCol, isCopilot && styles.conversationColCopilot].filter(Boolean).join(" ")}>
             <Conversation
               history={snapshot.history}
-              typing={snapshot.status === "running"}
+              typing={shouldShowTyping(snapshot.status, snapshot.question)}
               copilot={isCopilot}
             />
             {isCopilot && (
@@ -181,8 +190,17 @@ export function Workspace({
   );
 }
 
-function FinalMessagePanel({ message, onArrangePickup }: { message: string; onArrangePickup: () => void }) {
+export function FinalMessagePanel({
+  message,
+  onArrangePickup,
+  channel,
+}: {
+  message: string;
+  onArrangePickup: () => void;
+  channel?: Channel;
+}) {
   const [notice, setNotice] = useState("");
+  const isMarketplace = channel === "marketplace";
 
   const copy = async () => {
     try {
@@ -200,13 +218,24 @@ function FinalMessagePanel({ message, onArrangePickup }: { message: string; onAr
 
   return (
     <section className={styles.finalMessage} aria-labelledby="final-message-title" data-testid="copilot-final-message-panel">
-      <h2 id="final-message-title">Send this to the seller</h2>
+      <h2 id="final-message-title">
+        {isMarketplace ? "Closing message" : "Send this to the seller"}
+      </h2>
       <label className={styles.srOnly} htmlFor="copilot-final-message">Final message</label>
       <textarea id="copilot-final-message" readOnly value={message} rows={3} />
-      <Button type="button" variant="secondary" onClick={() => void copy()} data-testid="copilot-final-copy">
-        Copy
-      </Button>
-      <p>Then agree a pickup time with the seller.</p>
+      {!isMarketplace && (
+        <Button type="button" variant="secondary" onClick={() => void copy()} data-testid="copilot-final-copy">
+          Copy
+        </Button>
+      )}
+      {isMarketplace ? (
+        <>
+          <p>Recorded in the chat. The marketplace here is simulated, so there is no one to send it to.</p>
+          <p>Next: arrange a pickup time.</p>
+        </>
+      ) : (
+        <p>Then agree a pickup time with the seller.</p>
+      )}
       <Button
         type="button"
         variant="ghost"

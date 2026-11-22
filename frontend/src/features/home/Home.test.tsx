@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ListingCategory } from "../../types";
 import { CATEGORIES } from "../../lib/categories";
-import { Home, CategoryOtherHint } from "./Home";
+import { Home, CategoryOtherHint, ChannelChoice } from "./Home";
 
 const EXPECTED_CATEGORIES: ListingCategory[] = [
   "monitors",
@@ -44,6 +44,7 @@ describe("Home category values", () => {
 });
 
 vi.mock("../../api", () => ({
+  getCapabilities: vi.fn().mockResolvedValue({ marketplace_channel: false }),
   getPreferences: vi.fn(),
   getSimilar: vi.fn(),
   startRun: vi.fn(),
@@ -61,6 +62,55 @@ describe("Home mode-specific rendering", () => {
     expect(html).not.toContain("&mdash;");
     expect(html).not.toContain("&amp;mdash;");
     expect(html).not.toContain("General guidance only");
+  });
+
+  it("Copilot mode with capabilities off does not show channel choice", () => {
+    const html = renderToStaticMarkup(
+      <Home onStart={() => {}} mode="copilot" capabilities={{ marketplace_channel: false }} />,
+    );
+    expect(html).not.toContain("How messages reach the seller");
+  });
+
+  it("Copilot mode with capabilities on shows the channel choice", () => {
+    const html = renderToStaticMarkup(
+      <Home onStart={() => {}} mode="copilot" capabilities={{ marketplace_channel: true }} />,
+    );
+    expect(html).toContain("How messages reach the seller");
+    expect(html).toContain("I send them myself (real seller)");
+    expect(html).toContain("Haggle sends them after I approve (simulated marketplace)");
+  });
+
+  it("Copilot mode with capabilities on shows seller opening field by default (manual)", () => {
+    const html = renderToStaticMarkup(
+      <Home onStart={() => {}} mode="copilot" capabilities={{ marketplace_channel: true }} />,
+    );
+    expect(html).toContain("Seller\u2019s first message");
+  });
+
+  it("ChannelChoice marketplace renders both options", () => {
+    const html = renderToStaticMarkup(
+      <ChannelChoice channel="marketplace" onChannelChange={vi.fn()} />,
+    );
+    expect(html).toContain("How messages reach the seller");
+    expect(html).toContain("I send them myself (real seller)");
+    expect(html).toContain("Haggle sends them after I approve (simulated marketplace)");
+  });
+
+  it("Copilot marketplace selected hides seller opening field and shows persona picker", () => {
+    const html = renderToStaticMarkup(
+      <Home onStart={() => {}} mode="copilot" channel="marketplace" capabilities={{ marketplace_channel: true }} />,
+    );
+    expect(html).not.toContain("Seller\u2019s first message");
+    expect(html).toContain("Flexible seller");
+    expect(html).toContain("The seller is simulated. You approve every message before it is sent.");
+  });
+
+  it("ChannelChoice manual renders both options", () => {
+    const html = renderToStaticMarkup(
+      <ChannelChoice channel="manual" onChannelChange={vi.fn()} />,
+    );
+    expect(html).toContain("I send them myself (real seller)");
+    expect(html).toContain("Haggle sends them after I approve (simulated marketplace)");
   });
 
   it("Copilot mode with category other contains General guidance only", () => {

@@ -15,6 +15,7 @@ from backend.app.sim.seller import SimSeller
 
 mcp = MCPServer("haggle-marketplace")
 CONVERSATIONS: dict[str, SimSellerPort] = {}  # in memory: a real marketplace would persist this
+CONVERSATION_OPENINGS: dict[str, str] = {}  # seller's opening line per conversation
 
 
 def _reply(**data) -> str:
@@ -61,7 +62,51 @@ def open_conversation(
         port = SimSellerPort(SimSeller(Decimal(asking), get_persona(persona), seed=seed))
         opening = port.opening_text()
     CONVERSATIONS[conversation_id] = port
+    if opening is not None:
+        CONVERSATION_OPENINGS[conversation_id] = opening
     return _reply(opening=opening, resumed=False)
+
+
+@mcp.tool()
+def get_conversation(conversation_id: str) -> str:
+    """Read-only snapshot of a conversation: asking price, persona, and the buyer/seller
+    messages in turn order. Never reveals the hidden reserve price or any internal seller state.
+    Returns {"found": False, "messages": []} for an unknown id."""
+    port = CONVERSATIONS.get(conversation_id)
+    if port is None:
+        return _reply(found=False, messages=[])
+    opening = CONVERSATION_OPENINGS.get(conversation_id)
+    messages: list[dict] = []
+    if opening is not None:
+        messages.append({"turn": 0, "from": "seller", "text": opening, "price": None})
+    n = max(len(port.sent), len(port.log))
+    for i in range(n):
+        if i < len(port.sent):
+            price, text = port.sent[i]
+            messages.append(
+                {
+                    "turn": len(messages),
+                    "from": "buyer",
+                    "text": text,
+                    "price": float(price) if price is not None else None,
+                }
+            )
+        if i < len(port.log):
+            reply = port.log[i]
+            messages.append(
+                {
+                    "turn": len(messages),
+                    "from": "seller",
+                    "text": reply.text,
+                    "price": float(reply.price) if reply.price is not None else None,
+                }
+            )
+    return _reply(
+        found=True,
+        asking=float(port.seller.asking_price),
+        persona=port.seller.persona.name,
+        messages=messages,
+    )
 
 
 @mcp.tool()

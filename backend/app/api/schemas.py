@@ -2,7 +2,7 @@ import re
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -30,6 +30,7 @@ class StartRequest(BaseModel):
     ) = None
     listing_text: str | None = Field(default=None, max_length=4000)
     comparables: list[Decimal] | None = Field(default=None, max_length=8)
+    channel: Literal["manual", "marketplace"] = "manual"
 
     @field_validator("item_title", "seller_opening", "listing_text")
     @classmethod
@@ -42,6 +43,14 @@ class StartRequest(BaseModel):
         if value and any(price <= 0 for price in value):
             raise ValueError("comparable prices must be above zero")
         return value
+
+    @model_validator(mode="after")
+    def channel_validation(self) -> "StartRequest":
+        if self.channel == "marketplace" and self.mode != "copilot":
+            raise ValueError("marketplace channel requires mode=copilot")
+        if self.channel == "marketplace" and self.seller_opening:
+            raise ValueError("the marketplace supplies the opening: do not set seller_opening")
+        return self
 
 
 class Decision(BaseModel):
@@ -68,3 +77,7 @@ class Reply(BaseModel):
 
 class Pickup(BaseModel):
     start_at: str = Field(min_length=1, max_length=64)
+
+
+class SendRequest(BaseModel):
+    sent_text: str | None = Field(default=None, max_length=4000)
