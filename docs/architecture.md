@@ -70,8 +70,27 @@ A test kills a worker mid-run and resumes it.
 The calendar is an MCP server in a separate process that receives only `DATABASE_URL`
 (`boundaries/calendar_server.py`). Slots are hourly, 10:00 to 19:00 Malaysia time, at least 24 hours
 ahead. Booking is idempotent: the key is `<run_id>:pickup`, so a retry never books twice.
-`boundaries/marketplace_server.py` is a prototype of a seller-facing boundary (see
-`scripts/demo_mcp.py`); no real marketplace is connected.
+## Boundaries (MCP)
+
+The calendar is an MCP server in a separate process that receives only `DATABASE_URL`
+(`boundaries/calendar_server.py`). Slots are hourly, 10:00 to 19:00 Malaysia time, at least 24 hours
+ahead. Booking is idempotent: the key is `<run_id>:pickup`, so a retry never books twice.
+
+`boundaries/marketplace_server.py` is the simulated seller-facing MCP server. It is started by the
+API only when `MARKETPLACE_CHANNEL=on` is set (`backend/app/api/main.py:218`); otherwise it appears
+as `off` with no tools (`main.py:222-231`). The calendar server is always started (`main.py:217`).
+The marketplace exposes `open_conversation`, `send_offer`, `send_message` and `get_conversation`
+(`marketplace_server.py:44-122`). `McpSellerPort` (`boundaries/ports.py:13-61`) wraps it with
+`opening_text`, `send_offer` and `send_message`; `ApprovedMcpSellerPort` (`boundaries/ports.py:64-117`)
+adds an explicit interrupt at the `seller_reply` gate so every outgoing draft waits for human
+approval before being sent (`builder.py:78`). Conversation state (`conversation_id` = run id) is
+rebuilt from earlier turns via `replay_json` on restart, and `open_conversation`/`send_offer` are
+idempotent by turn number. Call recording goes through `CallRecorder` (`boundaries/recorder.py:38-74`),
+a ring buffer (last 500) that keeps only `turn`, `price`, `start`, `slot`, `kind`, `start_at`,
+`from_iso`, `count` and `conversation` (first 8 chars of `conversation_id`); message text and the
+hidden floor/reserve/patience are never recorded. Read-only endpoints: `GET /connections`,
+`GET /negotiations/{run_id}/mcp-calls` and `GET /negotiations/{run_id}/seller-view` (409 for
+non-marketplace runs).
 
 ## Research before the first offer
 

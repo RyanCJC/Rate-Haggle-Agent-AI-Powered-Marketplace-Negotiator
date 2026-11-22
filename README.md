@@ -68,9 +68,19 @@ Home, a run waiting for your approval, the Copilot composer, and the outcome of 
   stand-in, so the test suites and the browser tests never call a real model. Log lines carry the
   run id and never contain prompts, messages or your limit.
 
+### Copilot marketplace channel
+
+Copilot normally has you relay every message yourself: Haggle drafts it, you send it on another app,
+then you paste the seller's reply back. With the **marketplace channel**, the approved message is
+instead sent to a simulated marketplace seller that runs as an MCP server (stdio, separate process),
+and the seller's reply comes back as the tool result. Every message waits for your approval first —
+you may edit the draft before it is sent, and the edited text is re-validated by the same rule
+check. Your hidden maximum budget never reaches the model. The simulated seller is rule-based and
+persona-driven, not a real marketplace, and it only runs when `MARKETPLACE_CHANNEL=on`.
+
+
 
 ## Why not just ask a chat assistant?
-
 A chat assistant is good at wording a message. Negotiating on someone's behalf needs more, and a chat
 window cannot promise it:
 
@@ -277,128 +287,16 @@ skip `index_knowledge.py` everything still works; the agent just finds no buying
 
 ---
 
-## Getting started (detailed)
+## Getting started
 
-### 1. Clone and configure
+Copy `.env.example` to `.env`, set `DATABASE_URL`, then choose how the language model runs:
 
-Create `.env` from `.env.example`:
+- **Real model:** set `LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` (any OpenAI-compatible endpoint).
+- **No API key, to try it out:** set `HAGGLE_LLM=offline`. A rule-based stand-in writes the messages: everything works, with plainer wording.
 
-**PowerShell:**
+Full step-by-step setup (venv, migrations, frontend) is in [docs/setup.md](docs/setup.md).
 
-```powershell
-Copy-Item .env.example .env
-# edit .env — set DATABASE_URL at minimum
-```
-
-**macOS/Linux:**
-
-```bash
-cp .env.example .env
-# edit .env — set DATABASE_URL at minimum
-```
-
-The API app (`backend/app/api/main.py`) calls `load_dotenv()` in its lifespan, so `.env` is loaded
-automatically when you start the server — no manual export is required.
-
-### 2. Backend setup
-
-**PowerShell:**
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-**macOS/Linux:**
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Apply the database migrations:
-
-**PowerShell:**
-
-```powershell
-python scripts/migrate.py
-```
-
-**macOS/Linux:**
-
-```bash
-python scripts/migrate.py
-```
-
-Optional: seed the listings/comparables/knowledge tables used by the market check and knowledge
-base:
-
-**PowerShell:**
-
-```powershell
-python scripts/seed.py
-python scripts/seed_knowledge.py
-python scripts/index_knowledge.py
-```
-
-**macOS/Linux:**
-
-```bash
-python scripts/seed.py
-python scripts/seed_knowledge.py
-python scripts/index_knowledge.py
-```
-
-### 3. Start the backend
-
-**PowerShell:**
-
-```powershell
-$env:DATABASE_URL="<your database url>"
-$env:LLM_MODEL="<your model name>"
-$env:LLM_BASE_URL="http://localhost:11434/v1"
-$env:LLM_API_KEY="not-needed"
-python -m uvicorn backend.app.api.main:app --port 8000
-```
-
-**macOS/Linux:**
-
-```bash
-export DATABASE_URL="<your database url>"
-export LLM_MODEL="<your model name>"
-export LLM_BASE_URL="http://localhost:11434/v1"
-export LLM_API_KEY="not-needed"
-python -m uvicorn backend.app.api.main:app --port 8000
-```
-
-The app uses a live OpenAI-compatible model by default; set `HAGGLE_LLM=offline` to use the rule-based stand-in instead. Set
-`DATABASE_URL`, `LLM_MODEL`, `LLM_BASE_URL`, and `LLM_API_KEY` in `.env` (loaded automatically)
-or export them before starting uvicorn.
-
-CORS defaults to `http://localhost:5173`; override with `CORS_ORIGINS`.
-
-### 4. Start the frontend
-
-**PowerShell:**
-
-```powershell
-cd frontend
-npm install
-npm run dev      # Vite dev server, defaults to http://localhost:5173
-```
-
-**macOS/Linux:**
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The Vite dev server proxies `/api` to `http://127.0.0.1:8000` (`frontend/vite.config.ts`), so the
-frontend and backend must run together.
+Open `http://localhost:5173`, choose **Practice** or **Copilot**, and start negotiating. The server logs one `starting: llm_mode=...` line at startup, so you can see which model mode it is in. If you skip `index_knowledge.py` everything still works; the agent just finds no buying guidance.
 
 ---
 
@@ -414,6 +312,7 @@ Only `backend/app/settings.py` reads the environment (a test enforces it).
 | `EMBED_MODEL` | no | embedding model for the knowledge search (default `BAAI/bge-small-en-v1.5`) |
 | `LOG_LEVEL` | no | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `CORS_ORIGINS` | no | comma-separated allowed browser origins (default `http://localhost:5173`) |
+| `MARKETPLACE_CHANNEL` | no | set to the exact word `on` to enable the simulated marketplace MCP channel; anything else (or unset, the default) keeps it off |
 
 ---
 
@@ -459,6 +358,18 @@ Response:
 - `GET /negotiations/{run_id}/pickup/options` and `POST /negotiations/{run_id}/pickup` — propose
   and book a pickup slot after a deal.
 
+### MCP connections
+
+- `GET /capabilities` — `{"marketplace_channel": true|false}` — whether the simulated marketplace
+  MCP channel is enabled on this server (`MARKETPLACE_CHANNEL=on`).
+- `GET /connections` — the two MCP servers (calendar, marketplace) with their transport, status and
+  tools/parameters. The marketplace server shows `off` with no tools when the channel is disabled.
+- `GET /negotiations/{run_id}/mcp-calls` — the call log for the current negotiation (calls since
+  the server process started, held in memory, last 500).
+- `GET /negotiations/{run_id}/seller-view` — the simulated seller's side of the conversation
+  (opening first, then buyer/seller turns). Returns 409 for runs that do not use the marketplace
+  channel.
+
 ### Profile memory
 
 - `GET /profile/preferences`, `PUT /profile/preferences` — save style / pickup window / area
@@ -471,26 +382,39 @@ All profile endpoints require `X-Profile-Id`.
 
 ### How the LangGraph workflow runs
 
-Nodes (in `backend/app/graph/nodes.py`, built by `build_graph` in `builder.py`):
+The workflow is built by `build_graph` in `backend/app/graph/builder.py`; state lives in
+`backend/app/graph/state.py`. Full detail: [docs/architecture.md](docs/architecture.md).
 
-1. **plan** — strategy decides offer / accept / walk away / ask question (never talks to the seller
-   directly).
-2. **clarify** (optional) — tool loop: read listing, market stats, knowledge base, or ask the
-   seller one question; capped at 4 tool steps / 2 questions.
-3. **compose** — LLM drafts the buyer message from the decision + public context (budget never in
-   the prompt).
-4. **validate** — deterministic gate: no over-budget/above-asking offers, no price leaks, no
-   ungrounded item claims. Rejected drafts are retried then replaced by a code fallback.
-5. **execute** — send to the seller (Practice) or pause with the draft for the human to relay
-   (Copilot `approve_close`); on accept there is a close-deal approval gate.
-6. **ingest** — read the seller's reply: price, acceptance, walk-away, budget probe, pressure,
-   term change. Phantom deals are rejected; only the buyer's own offered price counts.
-7. **finalize** — outcome: deal / we_walk / seller_walks / timeout.
-8. **schedule** (when a calendar is wired and the run is a deal) — propose and book the earliest
-   free pickup slot; a failure never undoes the deal.
+Nodes: **plan** (strategy decides offer / accept / walk away / ask question), **clarify** (optional
+tool loop: read listing, market stats, knowledge base, or ask the seller a question), **compose**
+(LLM drafts the buyer message), **validate** (deterministic gate: no over-budget offers, no price
+leaks, no ungrounded claims), **execute** (send to the seller or pause for human approval),
+**ingest** (read the seller's reply), **finalize** (outcome: deal / walk away / timeout), and
+**schedule** (propose and book a pickup slot after a deal).
 
 Interrupts (human-in-the-loop): `close_deal` (approve the final price) and `book_pickup` (confirm
 the slot).
+
+## Connections view
+
+The Connections view shows the two MCP servers that Haggle can talk to:
+
+- **What it shows:** the calendar and marketplace servers with their tools and parameters, a live
+  log of MCP calls for the current negotiation (time, server, tool, summary, duration, result), and
+  the simulated seller's side of the conversation (opening first, then turns in order).
+- **Where to find it:** inside a negotiation, the **Connections** button (`open-connections`) opens
+  a right-side drawer with tabs **Calls / Servers / Seller's view**. A **Connections** link in the
+  top bar shows the servers on a standalone page. From the drawer, **Open in a new window**
+  (`connections-popout`) opens a pop-out page at `#/connections/<run id>` that also works after a
+  full page load.
+- **What it deliberately does NOT show:** message text is never in the call log (only turn number,
+  price and whitelisted argument names), and the seller's hidden floor/reserve price never appears
+  in the seller's view.
+- **Call log data:** held in memory and covers calls since the server process started (last 500).
+
+![MCP servers](docs/images/connections-servers.png)
+
+![Connections pop-out: MCP servers and the simulated seller's side of the chat.](docs/images/connections-seller-view.png)
 
 ---
 
@@ -555,7 +479,6 @@ npm run e2e
 ```
 
 The backend suite runs entirely offline (`backend/tests/conftest.py` sets `HAGGLE_LLM=offline`).
-At the time of writing: 489 backend tests, 97 frontend unit tests and 50 end-to-end tests.
 Playwright runs at 1440×900 in light theme only. The e2e suite starts the FastAPI backend (with the
 offline model) and the Vite dev server itself (`frontend/e2e/global-setup.ts`) and cleans negotiation
 runs and profile rows afterwards (`frontend/e2e/global-teardown.ts` -> `scripts/delete_run.py` /
@@ -593,7 +516,13 @@ NaiveBuyerLLM test doubles and run offline.
 - The simulated seller does not answer the agent's questions; it replies with its price.
 - Your own edits to a draft are checked against your limit but not fact-checked against the item.
 - The calendar is Haggle's own. It does not connect to Google Calendar or any personal calendar.
-- No marketplace is connected. In Copilot mode you relay every message yourself.
+- The marketplace is simulated: it runs as an MCP server (`backend/app/boundaries/marketplace_server.py`)
+  only when `MARKETPLACE_CHANNEL=on`, and the seller is rule-based and persona-driven, not a real
+  marketplace. With the channel off, the Connections page shows the marketplace server as `off`.
+- The call log is held in memory and covers calls since the server process started (last 500); a
+  restart clears it.
+- The closing/accept message is recorded in the run history but is not sent through the marketplace
+  server.
 - Similar past deals are matched by wording, not by meaning. The `other` category, and categories
   that have no extra item facts, get general guidance only.
 - The anonymous profile is a random id kept in the browser. There are no accounts, and anyone who has
@@ -617,7 +546,9 @@ DATABASE_URL, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, CORS_ORIGINS. Set VITE_API_B
 The deployed demo uses the live model, with the key stored only in Render's settings. There is no
 login, so anyone with the URL can start runs and use the model quota (calls are limited to 13 per
 minute per server process). The free service sleeps when idle, so the first request after a gap is
-slow.
+slow. The hosted demo enables the marketplace channel only if `MARKETPLACE_CHANNEL=on` is set in
+the hosting dashboard (the repository default is off); the free-tier memory limit is the reason to
+check before enabling it, since the channel adds one more server process.
 
 ---
 
