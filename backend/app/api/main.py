@@ -255,13 +255,12 @@ def create_app(
     ):
         profile_id = profile_of(x_profile_id) if x_profile_id else None
         copilot = body.mode == "copilot"
+        try:
+            get_persona(body.persona)
+        except Exception:  # noqa: BLE001 - any lookup failure means an unknown persona
+            raise HTTPException(422, f"unknown persona: {body.persona}") from None
         if body.channel == "marketplace" and not Settings.from_env().marketplace_channel:
             raise HTTPException(400, "marketplace channel is not enabled on this server")
-        if not copilot:  # a copilot run has a real seller, so the persona is ignored
-            try:
-                get_persona(body.persona)
-            except Exception:  # noqa: BLE001 - any lookup failure means an unknown persona
-                raise HTTPException(422, f"unknown persona: {body.persona}") from None
         category, guessed = (
             resolve_category(body.category, body.item_title, body.listing_text)
             if copilot

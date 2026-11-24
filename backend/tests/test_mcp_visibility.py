@@ -23,21 +23,28 @@ ASKING = Decimal(1200)
 
 
 def make(calendar=None, marketplace=None, recorder=None):
+    old_marketplace_channel = os.environ.get("MARKETPLACE_CHANNEL")
     if marketplace is not None:
         os.environ["MARKETPLACE_CHANNEL"] = "on"
-    saver = InMemorySaver()
-    runs = MemoryRuns()
-    service = Service(
-        saver,
-        calendar or InMemoryCalendar(),
-        runs,
-        marketplace=marketplace,
-        recorder=recorder,
-    )
-    app = create_app(service, poll_interval=0.02, stream_seconds=1.0)
-    app.state.calendar_session = calendar
-    app.state.marketplace_session = marketplace
-    return app, saver, runs, service
+    try:
+        saver = InMemorySaver()
+        runs = MemoryRuns()
+        service = Service(
+            saver,
+            calendar or InMemoryCalendar(),
+            runs,
+            marketplace=marketplace,
+            recorder=recorder,
+        )
+        app = create_app(service, poll_interval=0.02, stream_seconds=1.0)
+        app.state.calendar_session = calendar
+        app.state.marketplace_session = marketplace
+        return app, saver, runs, service
+    finally:
+        if old_marketplace_channel is None:
+            os.environ.pop("MARKETPLACE_CHANNEL", None)
+        else:
+            os.environ["MARKETPLACE_CHANNEL"] = old_marketplace_channel
 
 
 def start_copilot_marketplace(client, **overrides):

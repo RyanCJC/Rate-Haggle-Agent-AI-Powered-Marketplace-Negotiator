@@ -73,12 +73,12 @@ Home, a run waiting for your approval, the Copilot composer, and the outcome of 
 Copilot normally has you relay every message yourself: Haggle drafts it, you send it on another app,
 then you paste the seller's reply back. With the **marketplace channel**, the approved message is
 instead sent to a simulated marketplace seller that runs as an MCP server (stdio, separate process),
-and the seller's reply comes back as the tool result. Every message waits for your approval first —
+and the seller's reply comes back as the tool result. Every message waits for your approval first,
 you may edit the draft before it is sent, and the edited text is re-validated by the same rule
 check. Your hidden maximum budget never reaches the model. The simulated seller is rule-based and
 persona-driven, not a real marketplace, and it only runs when `MARKETPLACE_CHANNEL=on`.
 
-
+---
 
 ## Why not just ask a chat assistant?
 A chat assistant is good at wording a message. Negotiating on someone's behalf needs more, and a chat
@@ -134,7 +134,7 @@ flowchart TD
 | Which read-only lookup to run | the model chooses, code runs and validates (`tools.py`) |
 | Booking a pickup | code, through a calendar MCP server |
 
-
+---
 
 ## Evaluation
 
@@ -154,14 +154,8 @@ ratio), and comparisons are paired: the same negotiation under each policy.
 | b3_capped_ladder (budget-aware fixed ladder) | 83% | 0.519 [0.375, 0.644] | 0% |
 | b2_fixed_discount (ignores the budget) | 100% | 0.380 [0.250, 0.514] | 57% |
 
-Paired difference to b3: -0.053 [-0.289, +0.157], a tie. Against the seller who leaves after three
-replies (`quick_walker`) Haggle closed 0 of 15 possible deals: its opening was too low and its
-concessions too slow for an impatient seller.
-
-**Round 2: a separate, labelled experiment** (a faster opening and flatter concessions, chosen on
-development sellers only; 6 new sellers, 630 negotiations per policy, code version `1e0eb55`; plan
-written before any change in `docs/eval_round2_plan.md`; report in
-`eval/reports/round2_test_report.md`):
+**Round 2: labelled experiment** (6 new sellers, 630 negotiations per policy, code version
+`1e0eb55`; plan in `docs/eval_round2_plan.md`; report in `eval/reports/round2_test_report.md`):
 
 | policy | deal rate | score [95% CI] | rule violations |
 |---|---|---|---|
@@ -170,53 +164,33 @@ written before any change in `docs/eval_round2_plan.md`; report in
 | b3_capped_ladder | 88% | 0.534 [0.439, 0.626] | 0% |
 | b2_fixed_discount | 100% | 0.377 [0.266, 0.484] | 60% |
 
-Paired: v2 minus round 1 style +0.132 [+0.024, +0.271]; v2 minus b3 -0.079 [-0.246, +0.073], a tie.
-The success criterion declared in advance for impatient sellers (interval above zero) was missed:
-+0.228 [+0.000, +0.459]. It is reported as not met.
+To reproduce, run `python scripts/run_eval.py --split dev` for development sellers, or
+`--split test --final` / `--split test2 --final` for the scored splits (clean git tree required;
+see [docs/development.md](docs/development.md) for details).
 
-| seller | patient? | v2 | b3 |
-|---|---|---|---|
-| moderate | yes | 0.677 | 0.469 |
-| patient_soft | yes | 0.713 | 0.533 |
-| patient_firm | yes | 0.551 | 0.333 |
-| brisk_mid | no | 0.546 | 0.727 |
-| short_fuse | no | 0.000 | 0.492 |
-| brisk_firm | no | 0.000 | 0.556 |
+Haggle never broke a rule in either test round. It ties the fair baseline: safe and competitive,
+not better. Against sellers who leave quickly (round 2: 0 deals against `short_fuse` and
+`brisk_firm`) it loses deals, and a missed deal counts as 0.
 
-**What this shows.** Haggle never broke a rule in either test round (the fixed-discount baseline broke
-them in 57% to 60% of negotiations). It gets better prices than a fixed ladder from sellers who keep
-negotiating, and it loses deals to sellers who leave quickly. Overall it ties the fair baseline; it is
-safe and competitive, not better.
-
-**What it does not show.** The sellers are simple simulators written by the author, not real people.
-The round 2 sellers were written after the round 1 failure was known, so only round 1 was fully
-blind, and six sellers give few independent cases. The language-model layer (wording, reading
-messages) is not part of these numbers.
-
-Reproduce (each split is documented in [Development](#development)):
-
-```
-python scripts/run_eval.py --split dev            # development sellers: tuning allowed
-python scripts/run_eval.py --split test --final   # round 1: scored once, clean git tree required
-python scripts/run_eval.py --split test2 --final  # round 2: same rule
-```
+The Copilot e2e suites also include input-variation tests (form values, API validation, seller
+replies, price scales, edits, all personas). These tests found a real bug: an edited message was
+validated but the seller received the original draft. The bug is now fixed and covered by backend
+and e2e tests.
 
 ---
 
 ## Tech stack
 
 | Layer | Technology |
-|-------|------------|
+|---|---|
 | Backend language | Python 3.12 |
 | Backend framework | FastAPI |
 | Workflow engine | LangGraph (state graph, Postgres checkpointer) |
 | LLM client | OpenAI Python SDK (any OpenAI-compatible endpoint) |
 | Database | Postgres (Supabase) with `pgvector` |
-| Vector dimension | 384 (`BAAI/bge-small-en-v1.5` via fastembed) |
 | Frontend | Vite + React 18 + TypeScript (strict), CSS modules |
 | UI icons | lucide-react |
-| Frontend unit tests | vitest |
-| Frontend e2e | Playwright + axe-core (accessibility) |
+| Frontend tests | vitest |
 | Backend tests | pytest |
 | Lint | ruff (backend), eslint (frontend) |
 
@@ -247,56 +221,9 @@ Copy `.env.example` to `.env` and set `DATABASE_URL`. Then choose how the langua
 - **No API key, to try it out:** set `HAGGLE_LLM=offline`. A rule-based stand-in writes the messages:
   everything works, with plainer wording.
 
-**PowerShell:**
-
-```powershell
-# backend
-Copy-Item .env.example .env        # then edit .env
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python scripts/migrate.py
-python scripts/index_knowledge.py  # buying-guidance search; downloads a small embedding model once
-python -m uvicorn backend.app.api.main:app --port 8000
-```
-
-**macOS/Linux:**
-
-```bash
-# backend
-cp .env.example .env               # then edit .env
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python scripts/migrate.py
-python scripts/index_knowledge.py  # buying-guidance search; downloads a small embedding model once
-python -m uvicorn backend.app.api.main:app --port 8000
-```
-
-Then, in a second terminal:
-
-```
-cd frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`, choose **Practice** or **Copilot**, and start negotiating. The server
-logs one `starting: llm_mode=...` line at startup, so you can see which model mode it is in. If you
-skip `index_knowledge.py` everything still works; the agent just finds no buying guidance.
-
----
-
-## Getting started
-
-Copy `.env.example` to `.env`, set `DATABASE_URL`, then choose how the language model runs:
-
-- **Real model:** set `LLM_BASE_URL`, `LLM_API_KEY` and `LLM_MODEL` (any OpenAI-compatible endpoint).
-- **No API key, to try it out:** set `HAGGLE_LLM=offline`. A rule-based stand-in writes the messages: everything works, with plainer wording.
-
 Full step-by-step setup (venv, migrations, frontend) is in [docs/setup.md](docs/setup.md).
 
-Open `http://localhost:5173`, choose **Practice** or **Copilot**, and start negotiating. The server logs one `starting: llm_mode=...` line at startup, so you can see which model mode it is in. If you skip `index_knowledge.py` everything still works; the agent just finds no buying guidance.
+Open `http://localhost:5173`, choose **Practice** or **Copilot**, and start negotiating.
 
 ---
 
@@ -318,45 +245,13 @@ Only `backend/app/settings.py` reads the environment (a test enforces it).
 
 ## Usage
 
-### Start a negotiation (API)
+**Practice:** choose Practice on Home, set an asking price and budget, and negotiate with the
+simulated seller. Haggle drafts every message; code validates each one before it is sent.
 
-```http
-POST /negotiations
-Content-Type: application/json
-X-Profile-Id: <32-hex profile id, optional>
-
-{
-  "asking": 1200,
-  "budget": 1000,
-  "persona": "flexible",
-  "style": "balanced",
-  "autonomy": "approve_close",
-  "seed": 0,
-  "mode": "simulate",
-  "item_title": "Dell 27 inch gaming monitor",
-  "seller_opening": null,
-  "category": "monitors",
-  "listing_text": null,
-  "comparables": null
-}
-```
-
-Response:
-
-```json
-{ "id": "<run_id>" }
-```
-
-### Follow a run
-
-- `GET /negotiations/{run_id}` — full snapshot (status, history, question gate, outcome, price,
-  pickup, trace).
-- `GET /negotiations/{run_id}/events` — SSE stream of trace events (`trace`, `gate`, `done`).
-- `POST /negotiations/{run_id}/decision` with `{"verdict": "approve"}` — answer a pause gate.
-- `POST /negotiations/{run_id}/reply` (Copilot) with `{"reply": "...", "sent_text": "..."}` — paste
-  the seller's reply and what you actually sent.
-- `GET /negotiations/{run_id}/pickup/options` and `POST /negotiations/{run_id}/pickup` — propose
-  and book a pickup slot after a deal.
+**Copilot:** choose Copilot, set asking price and budget, and Haggle drafts each message for you.
+You copy the draft, send it yourself on another app, then paste the seller's reply back. Drafts
+pause for your review before sending. See [docs/copilot-mode.md](docs/copilot-mode.md) for the
+full flow, API endpoints, pickup coordination and profile memory.
 
 ### MCP connections
 
@@ -370,30 +265,18 @@ Response:
   (opening first, then buyer/seller turns). Returns 409 for runs that do not use the marketplace
   channel.
 
-### Profile memory
-
-- `GET /profile/preferences`, `PUT /profile/preferences` — save style / pickup window / area
-- `GET /profile/deals` — finished Copilot deals
-- `GET /profile/similar?title=...&category=...` — wording-matched past deals
-- `DELETE /profile/deals/{run_id}` — forget one deal
-- `DELETE /profile` — clear the whole profile
-
-All profile endpoints require `X-Profile-Id`.
-
 ### How the LangGraph workflow runs
 
 The workflow is built by `build_graph` in `backend/app/graph/builder.py`; state lives in
 `backend/app/graph/state.py`. Full detail: [docs/architecture.md](docs/architecture.md).
 
-Nodes: **plan** (strategy decides offer / accept / walk away / ask question), **clarify** (optional
-tool loop: read listing, market stats, knowledge base, or ask the seller a question), **compose**
-(LLM drafts the buyer message), **validate** (deterministic gate: no over-budget offers, no price
-leaks, no ungrounded claims), **execute** (send to the seller or pause for human approval),
-**ingest** (read the seller's reply), **finalize** (outcome: deal / walk away / timeout), and
-**schedule** (propose and book a pickup slot after a deal).
+Nodes: **plan**, **clarify** (optional tool loop), **compose** (LLM drafts), **validate** (rule
+gate), **execute** (send or pause for approval), **ingest** (read reply), **finalize** (outcome),
+**schedule** (book pickup after a deal).
 
-Interrupts (human-in-the-loop): `close_deal` (approve the final price) and `book_pickup` (confirm
-the slot).
+Interrupts: `close_deal` (approve the final price) and `book_pickup` (confirm the slot).
+
+---
 
 ## Connections view
 
@@ -438,73 +321,20 @@ The full annotated map is at the end of [docs/architecture.md](docs/architecture
 
 ## Development
 
-### Backend
-
-**PowerShell:**
-
-```powershell
-ruff check .
-.\.venv\Scripts\python.exe -m pytest backend/tests -q --ignore=backend/tests/test_db.py
-```
-
-**macOS/Linux:**
-
-```bash
-ruff check .
-python -m pytest backend/tests -q --ignore=backend/tests/test_db.py
-```
-
-### Frontend
-
-**PowerShell:**
-
-```powershell
-cd frontend
-npm run lint
-npm test
-npm run build
-npm run preview
-npm run e2e
-```
-
-**macOS/Linux:**
-
-```bash
-cd frontend
-npm run lint
-npm test
-npm run build
-npm run preview
-npm run e2e
-```
+| Command | What it does |
+|---|---|
+| `ruff check .` | Backend lint |
+| `python -m pytest backend/tests -q --ignore=backend/tests/test_db.py` | Backend tests (offline) |
+| `cd frontend && npm run lint` | Frontend lint |
+| `cd frontend && npm test` | Frontend unit tests |
+| `cd frontend && npm run build` | Frontend production build |
+| `cd frontend && npm run e2e` | End-to-end tests |
 
 The backend suite runs entirely offline (`backend/tests/conftest.py` sets `HAGGLE_LLM=offline`).
-Playwright runs at 1440×900 in light theme only. The e2e suite starts the FastAPI backend (with the
-offline model) and the Vite dev server itself (`frontend/e2e/global-setup.ts`) and cleans negotiation
-runs and profile rows afterwards (`frontend/e2e/global-teardown.ts` -> `scripts/delete_run.py` /
-`scripts/delete_profiles.py`). The full suite takes about 25 minutes against a hosted Postgres,
-because every graph step writes a checkpoint; run one file with `npx playwright test e2e/category.spec.ts`.
+Playwright runs at 1440x900 in light theme only. Details and optional flows:
+[docs/development.md](docs/development.md).
 
-### Evaluation scripts
-
-From the repo root:
-
-```
-python scripts/run_scenarios.py
-python scripts/run_eval.py --split dev
-python scripts/run_eval.py --split test --final
-python scripts/run_eval.py --split test2 --final
-python scripts/compare_b1.py
-python scripts/eval_grounding.py
-```
-
-`run_eval.py` runs offline (no model calls). The `test` and `test2` splits are scored once: the script
-refuses to run them without `--final`, on a dirty git tree, or a second time for the same code
-version. Development runs write `eval/reports/dev_*` (ignored by git); the two committed reports are
-`final_test_report.md` and `round2_test_report.md`. run_scenarios.py, compare_b1.py and
-eval_grounding.py each take --live to use a real model; without it they use RuleBasedLLM or
-NaiveBuyerLLM test doubles and run offline.
-
+---
 
 ## Limitations
 
@@ -554,21 +384,14 @@ check before enabling it, since the channel adds one more server process.
 
 ## Troubleshooting
 
-- **`DATABASE_URL` not set:** the server fails to start. Set it in `.env` (loaded automatically)
-  or export it before running uvicorn.
+- **`DATABASE_URL` not set:** the server fails to start. Set it in `.env` or export before uvicorn.
 - **Frontend can't reach the API:** confirm the backend is on `http://127.0.0.1:8000`; the Vite
   proxy target is hardcoded there in `frontend/vite.config.ts`.
 - **Profile memory 503:** `DELETE /profile` is a safe no-op for an unknown id; a 503 means the
   memory dependency isn't reachable — retry or check the database.
-- **Run stuck at a gate:** Copilot runs pause at `close_deal` (and `seller_reply` for each draft)
-  until you answer via `POST /negotiations/{run_id}/decision` or `/reply`. The SSE stream
-  (`/events`) shows the current gate.
-- **No similar deals shown:** similarity is wording-based (not semantic), and only finished Copilot
-  deals with a final price qualify; Practice runs are never remembered.
-- **The agent never gives buying guidance:** run `python scripts/index_knowledge.py` once, and check
-  the server log for `knowledge search failed` or `embedder could not be created` warnings.
-- **Unsure which model the server uses:** read the `starting: llm_mode=...` line the server logs at
-  startup. Only the exact value `HAGGLE_LLM=offline` selects the offline stand-in.
+- **Run stuck at a gate:** Copilot runs pause at `close_deal` until you answer via `POST /negotiations/{run_id}/decision`. The SSE stream (`/events`) shows the current gate.
+- **No buying guidance:** run `python scripts/index_knowledge.py` once; check the server log for
+  `knowledge search failed` or `embedder could not be created` warnings.
 
 ---
 

@@ -318,8 +318,8 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None,
             entry["relayed"] = True
             sent = seller.sent_text
             if sent:
-                history = [*s["history"], ("buyer", sent)]  # record what was really sent
-                entry["edited"] = True
+                history = [*s["history"], ("buyer", sent)]
+                entry["edited"] = sent != draft  # True only when the edit differs from the draft
         update = {
             "history": [*history, ("seller", text)],
             "seller_text": text,

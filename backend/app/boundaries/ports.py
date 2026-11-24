@@ -92,6 +92,7 @@ class ApprovedMcpSellerPort:
         return self._inner.opening_text()
 
     def _ask(self, kind: str, price, draft: str) -> str:
+        self.sent_text = None  # reset so an edit from an earlier turn is never reused
         answer = interrupt(
             {
                 "gate": "seller_reply",
@@ -110,11 +111,13 @@ class ApprovedMcpSellerPort:
 
     def send_offer(self, price: Decimal, message: str) -> str:
         self._ask("offer", price, message)
-        return self._inner.send_offer(price, message)
+        actual = self.sent_text if self.sent_text is not None else message
+        return self._inner.send_offer(price, actual)
 
     def send_message(self, message: str) -> str:
         self._ask("question", None, message)
-        return self._inner.send_message(message)
+        actual = self.sent_text if self.sent_text is not None else message
+        return self._inner.send_message(actual)
 
 
 class CalendarError(Exception):

@@ -138,11 +138,11 @@ def test_the_first_pause_is_a_seller_reply_question_with_the_draft():
         assert snap["pickup"] is None
 
 
-def test_copilot_ignores_the_persona_and_forces_the_close_gate():
+def test_copilot_start_rejects_unknown_persona_and_forces_close_gate():
     app, *_ = make()
     port = sim_port(get_persona("flexible"))
     with TestClient(app) as client:
-        run_id = start_copilot(client, port, persona="nobody", autonomy="auto")
+        run_id = start_copilot(client, port, persona="flexible", autonomy="auto")
         snap = wait_status(client, run_id, {"waiting_for_approval"})
         assert snap["config"]["autonomy"] == "approve_close"
         bad = client.post("/negotiations", json={"asking": 1200, "budget": 1000,
@@ -265,3 +265,54 @@ def test_instructions_inside_the_seller_text_are_just_text():
     buyer_messages = [text for role, text in final["history"] if role == "buyer"]
     assert buyer_messages
     assert all("1000" not in text and "1,000" not in text for text in buyer_messages)
+
+
+def test_execute_entry_marks_relayed_no_edit():
+    app, *_ = make()
+    port = sim_port(get_persona("flexible"))
+    with TestClient(app) as client:
+        run_id = start_copilot(client, port)
+        question = wait_status(client, run_id, {"waiting_for_approval"})["question"]
+        reply = seller_says(port, question)
+        client.post(f"/negotiations/{run_id}/reply", json={"reply": reply})
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished", "failed"})
+        execute_entries = [e for e in snap["trace"] if e["node"] == "execute"]
+        assert execute_entries, "no execute entries in trace"
+        entry = execute_entries[-1]
+        assert entry["relayed"] is True
+        assert entry.get("edited") is None
+
+
+def test_execute_entry_marks_relayed_edited_differs():
+    app, *_ = make()
+    port = sim_port(get_persona("flexible"))
+    with TestClient(app) as client:
+        run_id = start_copilot(client, port)
+        question = wait_status(client, run_id, {"waiting_for_approval"})["question"]
+        draft = question["draft"]
+        edited_text = f"{draft} with an edit"
+        client.post(
+            f"/negotiations/{run_id}/reply", json={"reply": draft, "sent_text": edited_text}
+        )
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished", "failed"})
+        execute_entries = [e for e in snap["trace"] if e["node"] == "execute"]
+        assert execute_entries, "no execute entries in trace"
+        entry = execute_entries[-1]
+        assert entry["relayed"] is True
+        assert entry["edited"] is True
+
+
+def test_execute_entry_marks_relayed_edited_same():
+    app, *_ = make()
+    port = sim_port(get_persona("flexible"))
+    with TestClient(app) as client:
+        run_id = start_copilot(client, port)
+        question = wait_status(client, run_id, {"waiting_for_approval"})["question"]
+        draft = question["draft"]
+        client.post(f"/negotiations/{run_id}/reply", json={"reply": draft, "sent_text": draft})
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished", "failed"})
+        execute_entries = [e for e in snap["trace"] if e["node"] == "execute"]
+        assert execute_entries, "no execute entries in trace"
+        entry = execute_entries[-1]
+        assert entry["relayed"] is True
+        assert entry.get("edited") is False

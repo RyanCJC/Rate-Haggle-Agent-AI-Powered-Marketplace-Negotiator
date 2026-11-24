@@ -73,3 +73,55 @@ notify the seller. A recorded booking does not prove that the seller agreed.
   does not send messages or calendar notifications.
 - The desktop-light E2E suite uses the offline demo model (`HAGGLE_LLM` is not set to `live`).
   Live-model wording and offer sequences are not covered by these deterministic tests.
+
+## API reference
+
+### Start a negotiation
+
+```http
+POST /negotiations
+Content-Type: application/json
+X-Profile-Id: <32-hex profile id, optional>
+
+{
+  "asking": 1200,
+  "budget": 1000,
+  "persona": "flexible",
+  "style": "balanced",
+  "autonomy": "approve_close",
+  "seed": 0,
+  "mode": "simulate",
+  "item_title": "Dell 27 inch gaming monitor",
+  "seller_opening": null,
+  "category": "monitors",
+  "listing_text": null,
+  "comparables": null
+}
+```
+
+Response:
+
+```json
+{ "id": "<run_id>" }
+```
+
+### Follow a run
+
+- `GET /negotiations/{run_id}` — full snapshot (status, history, question gate, outcome, price,
+  pickup, trace).
+- `GET /negotiations/{run_id}/events` — SSE stream of trace events (`trace`, `gate`, `done`).
+- `POST /negotiations/{run_id}/decision` with `{"verdict": "approve"}` — answer a pause gate.
+- `POST /negotiations/{run_id}/reply` (Copilot) with `{"reply": "...", "sent_text": "..."}` — paste
+  the seller's reply and what you actually sent.
+- `GET /negotiations/{run_id}/pickup/options` and `POST /negotiations/{run_id}/pickup` — propose
+  and book a pickup slot after a deal.
+
+### Profile memory
+
+- `GET /profile/preferences`, `PUT /profile/preferences` — save style / pickup window / area
+- `GET /profile/deals` — finished Copilot deals
+- `GET /profile/similar?title=...&category=...` — wording-matched past deals
+- `DELETE /profile/deals/{run_id}` — forget one deal
+- `DELETE /profile` — clear the whole profile
+
+All profile endpoints require `X-Profile-Id`.

@@ -23,6 +23,12 @@ MARKETPLACE = "backend.app.boundaries.marketplace_server"
 ASKING = Decimal(1200)
 
 
+@pytest.fixture
+def marketplace_off(monkeypatch):
+    """Make sure the flag is unset for tests that check the default-off behaviour."""
+    monkeypatch.delenv("MARKETPLACE_CHANNEL", raising=False)
+
+
 def make(marketplace=None, saver=None, runs=None):
     saver = saver or InMemorySaver()
     runs = runs or MemoryRuns()
@@ -109,7 +115,7 @@ def test_schema_marketplace_copilot_ok():
 # ------------------------------------------------------------- capabilities
 
 
-def test_capabilities_false_by_default():
+def test_capabilities_false_by_default(marketplace_off):
     app, _, _, _ = make()
     with TestClient(app) as client:
         r = client.get("/capabilities")
@@ -117,7 +123,7 @@ def test_capabilities_false_by_default():
         assert r.json() == {"marketplace_channel": False}
 
 
-def test_marketplace_start_when_off_400():
+def test_marketplace_start_when_off_400(marketplace_off):
     app, _, _, _ = make()
     with TestClient(app) as client:
         r = client.post("/negotiations", json={
@@ -125,6 +131,83 @@ def test_marketplace_start_when_off_400():
         })
         assert r.status_code == 400
         assert "marketplace channel is not enabled" in r.text
+
+
+# ------------------------------------------------------------- persona validation at start
+def test_start_unknown_persona_simulate_422():
+    app, _, runs, _ = make()
+    with TestClient(app) as client:
+        r = client.post("/negotiations", json={
+            "asking": 1200, "budget": 1000, "mode": "simulate", "persona": "not_a_persona",
+        })
+        assert r.status_code == 422
+        assert "unknown persona: not_a_persona" in r.text
+        # no run row created
+        assert len(runs.rows) == 0
+
+
+def test_start_unknown_persona_copilot_manual_422():
+    app, _, runs, _ = make()
+    with TestClient(app) as client:
+        r = client.post("/negotiations", json={
+            "asking": 1200, "budget": 1000, "mode": "copilot", "channel": "manual",
+            "persona": "not_a_persona",
+        })
+        assert r.status_code == 422
+        assert "unknown persona: not_a_persona" in r.text
+        assert len(runs.rows) == 0
+
+
+def test_start_unknown_persona_copilot_marketplace_422(mcp_session):
+    app, _, runs, _ = make()
+    with TestClient(app) as client:
+        r = client.post("/negotiations", json={
+            "asking": 1200, "budget": 1000, "mode": "copilot", "channel": "marketplace",
+            "persona": "not_a_persona",
+        })
+        assert r.status_code == 422
+        assert "unknown persona: not_a_persona" in r.text
+        assert len(runs.rows) == 0
+
+
+def test_start_known_persona_simulate_201():
+    app, _, _, _ = make()
+    with TestClient(app) as client:
+        r = client.post("/negotiations", json={
+            "asking": 1200, "budget": 1000, "mode": "simulate", "persona": "flexible",
+        })
+        assert r.status_code == 201
+        assert "id" in r.json()
+
+
+def test_start_known_persona_copilot_manual_201():
+    app, _, _, _ = make()
+    with TestClient(app) as client:
+        r = client.post("/negotiations", json={
+            "asking": 1200, "budget": 1000, "mode": "copilot", "channel": "manual",
+            "persona": "flexible",
+        })
+        assert r.status_code == 201
+        assert "id" in r.json()
+
+
+def test_start_known_persona_copilot_marketplace_201():
+    old = os.environ.get("MARKETPLACE_CHANNEL")
+    os.environ["MARKETPLACE_CHANNEL"] = "on"
+    try:
+        app, _, _, _ = make()
+        with TestClient(app) as client:
+            r = client.post("/negotiations", json={
+                "asking": 1200, "budget": 1000, "mode": "copilot", "channel": "marketplace",
+                "persona": "flexible",
+            })
+            assert r.status_code == 201
+            assert "id" in r.json()
+    finally:
+        if old is None:
+            os.environ.pop("MARKETPLACE_CHANNEL", None)
+        else:
+            os.environ["MARKETPLACE_CHANNEL"] = old
 
 
 # ------------------------------------------------------------- end to end
@@ -194,8 +277,97 @@ def test_marketplace_edited_send(mcp_session):
         ok = client.post(f"/negotiations/{run_id}/send", json={"sent_text": clean})
         assert ok.status_code == 202
 
+        # The edited text reaches the seller
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished"})
+        sv = client.get(f"/negotiations/{run_id}/seller-view").json()
+        assert sv["found"] is True
+        buyer_msgs = [m["text"] for m in sv["messages"] if m["from"] == "buyer"]
+        assert clean in buyer_msgs, (
+            f"expected '{clean}' in buyer messages {buyer_msgs}"
+        )
 
-def test_marketplace_stop_ends_run(mcp_session):
+
+def test_marketplace_send_no_edit_uses_draft(mcp_session):
+    """No edit (sent_text omitted): the seller receives the stored draft."""
+    app, _, _, _ = make(marketplace=mcp_session)
+    with TestClient(app) as client:
+        run_id = start_marketplace(client)
+
+        snap = wait_status(client, run_id, {"waiting_for_approval"})
+        question = snap["question"]
+        original_draft = question["draft"]
+
+        # No edit: POST /send with no sent_text body
+        ok = client.post(f"/negotiations/{run_id}/send", json={})
+        assert ok.status_code == 202
+
+        # The stored draft reaches the seller
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished"})
+        sv = client.get(f"/negotiations/{run_id}/seller-view").json()
+        assert sv["found"] is True
+        buyer_msgs = [m["text"] for m in sv["messages"] if m["from"] == "buyer"]
+        assert original_draft in buyer_msgs, f"expected '{original_draft}' in buyer messages {buyer_msgs}"
+
+
+def test_marketplace_send_empty_string_uses_draft(mcp_session):
+    """Empty-string sent_text: validation is skipped, seller receives stored draft."""
+    app, _, _, _ = make(marketplace=mcp_session)
+    with TestClient(app) as client:
+        run_id = start_marketplace(client)
+
+        snap = wait_status(client, run_id, {"waiting_for_approval"})
+        question = snap["question"]
+        original_draft = question["draft"]
+
+        # Empty string sent_text: skipped by validation, seller gets draft
+        ok = client.post(f"/negotiations/{run_id}/send", json={"sent_text": ""})
+        assert ok.status_code == 202
+
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished"})
+        sv = client.get(f"/negotiations/{run_id}/seller-view").json()
+        assert sv["found"] is True
+        buyer_msgs = [m["text"] for m in sv["messages"] if m["from"] == "buyer"]
+        assert original_draft in buyer_msgs, (
+            f"expected '{original_draft}' in buyer messages {buyer_msgs}"
+        )
+
+
+def test_marketplace_send_then_no_edit_uses_turn2_draft(mcp_session):
+    """Two consecutive turns: edit on turn 1, no edit on turn 2 -> turn 2 sends turn 2's draft."""
+    app, _, _, _ = make(marketplace=mcp_session)
+    with TestClient(app) as client:
+        run_id = start_marketplace(client)
+
+        # Turn 1: edit the draft
+        snap = wait_status(client, run_id, {"waiting_for_approval"})
+        question = snap["question"]
+        price_1 = question["price"]
+
+        edit_1 = f"Would RM {price_1} work for you?"
+        ok = client.post(f"/negotiations/{run_id}/send", json={"sent_text": edit_1})
+        assert ok.status_code == 202
+
+        # Wait for turn 2's gate
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished"})
+        if snap["status"] == "finished":
+            return  # Run finished after turn 1, nothing more to test
+        question_2 = snap["question"]
+        assert question_2["gate"] == "seller_reply"
+        original_draft_2 = question_2["draft"]
+
+        # Turn 2: no edit (send empty body)
+        ok = client.post(f"/negotiations/{run_id}/send", json={})
+        assert ok.status_code == 202
+
+        # Turn 2's draft (not turn 1's edit) reaches the seller
+        snap = wait_status(client, run_id, {"waiting_for_approval", "finished"})
+        sv = client.get(f"/negotiations/{run_id}/seller-view").json()
+        assert sv["found"] is True
+        buyer_msgs = [m["text"] for m in sv["messages"] if m["from"] == "buyer"]
+        assert original_draft_2 in buyer_msgs, (
+            f"expected '{original_draft_2}' in buyer messages {buyer_msgs}"
+        )
+        assert edit_1 not in buyer_msgs[-1:], f"turn 2 should not repeat turn 1's edit '{edit_1}'"
     app, _, _, _ = make(marketplace=mcp_session)
     with TestClient(app) as client:
         run_id = start_marketplace(client)
@@ -324,3 +496,25 @@ def test_marketplace_logs_no_private_values(mcp_session, caplog):
     assert str(ASKING) not in text  # asking not leaked
     assert "1000" not in text  # budget not leaked
     assert draft not in text  # draft text not leaked
+
+
+def test_execute_entry_marks_relayed_marketplace():
+    old = os.environ.get("MARKETPLACE_CHANNEL")
+    os.environ["MARKETPLACE_CHANNEL"] = "on"
+    try:
+        with McpSession(MARKETPLACE) as session:
+            app, _, _, _ = make(marketplace=session)
+            with TestClient(app) as client:
+                run_id = start_marketplace(client)
+                question = wait_status(client, run_id, {"waiting_for_approval"})["question"]
+                client.post(f"/negotiations/{run_id}/send", json={"sent_text": question["draft"]})
+                snap = wait_status(client, run_id, {"waiting_for_approval", "finished", "failed"})
+                execute_entries = [e for e in snap["trace"] if e["node"] == "execute"]
+                assert execute_entries, "no execute entries in trace"
+                entry = execute_entries[-1]
+                assert entry["relayed"] is True
+    finally:
+        if old is None:
+            os.environ.pop("MARKETPLACE_CHANNEL", None)
+        else:
+            os.environ["MARKETPLACE_CHANNEL"] = old

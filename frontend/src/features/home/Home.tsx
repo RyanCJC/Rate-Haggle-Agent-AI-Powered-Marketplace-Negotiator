@@ -6,6 +6,7 @@ import { Badge } from "../../ui/badge/badge";
 import { formatRm } from "../../lib/format";
 import { marketCheck, parseComparables } from "../../lib/listing";
 import { dealSummary, formatMatch, shouldShowSimilarDeals } from "../../lib/memory";
+import { parseMoney } from "../../lib/money";
 import { CATEGORIES } from "../../lib/categories";
 import { MarketCheckCard } from "../listing/MarketCheckCard";
 import type { Autonomy, Channel, Deal, ListingCategory, Mode, Style } from "../../types";
@@ -120,13 +121,14 @@ export function Home({
   const [comparablesText, setComparablesText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldError, setFieldError] = useState<{ asking?: string; budget?: string }>({});
   const styleTouched = useRef(false);
 
-  const askingN = Number(asking);
-  const budgetN = Number(budget);
-  const askingValid = asking.trim() !== "" && Number.isFinite(askingN) && askingN > 0;
-  const budgetValid = budget.trim() !== "" && Number.isFinite(budgetN) && budgetN > 0;
+  const askingN = parseMoney(asking);
+  const budgetN = parseMoney(budget);
+  const askingValid = askingN !== null;
+  const budgetValid = budgetN !== null;
+  const askingInvalid = asking.trim() !== "" && askingN === null;
+  const budgetInvalid = budget.trim() !== "" && budgetN === null;
   const valid = askingValid && budgetValid;
   const budgetAtOrAboveAsking = valid && budgetN >= askingN;
   const isCopilot = mode === "copilot";
@@ -203,19 +205,9 @@ export function Home({
     async (event: FormEvent) => {
       event.preventDefault();
       setError(null);
-      setFieldError({});
       const parsedComparables = parseComparables(comparablesText);
       if (isCopilot && parsedComparables.error) return;
-      let invalid = false;
-      if (!askingValid) {
-        setFieldError((prev) => ({ ...prev, asking: "Enter a valid asking price." }));
-        invalid = true;
-      }
-      if (!budgetValid) {
-        setFieldError((prev) => ({ ...prev, budget: "Enter a valid budget." }));
-        invalid = true;
-      }
-      if (invalid) return;
+      if (!askingValid || !budgetValid) return;
       setBusy(true);
       try {
         const effectiveAutonomy = isCopilot ? "approve_close" : autonomy;
@@ -334,24 +326,36 @@ export function Home({
           <label className={styles.label}>
             Seller&rsquo;s asking price (RM)
             <input
-              className={[styles.input, fieldError.asking && styles.inputError].filter(Boolean).join(" ")}
+              className={[styles.input, askingInvalid && styles.inputError].filter(Boolean).join(" ")}
               type="text"
               inputMode="numeric"
               value={asking}
               onChange={(e) => setAsking(e.target.value)}
+              aria-describedby={askingInvalid ? "asking-hint" : undefined}
+              aria-invalid={askingInvalid || undefined}
             />
-            {fieldError.asking && <span className={styles.fieldError}>{fieldError.asking}</span>}
+            {askingInvalid && (
+              <span id="asking-hint" className={styles.fieldError} data-testid="asking-hint">
+                Enter an amount like 1200 or 1,200.
+              </span>
+            )}
           </label>
           <label className={styles.label}>
             Your maximum budget (RM)
             <input
-              className={[styles.input, fieldError.budget && styles.inputError].filter(Boolean).join(" ")}
+              className={[styles.input, budgetInvalid && styles.inputError].filter(Boolean).join(" ")}
               type="text"
               inputMode="numeric"
               value={budget}
               onChange={(e) => setBudget(e.target.value)}
+              aria-describedby={budgetInvalid ? "budget-hint" : undefined}
+              aria-invalid={budgetInvalid || undefined}
             />
-            {fieldError.budget && <span className={styles.fieldError}>{fieldError.budget}</span>}
+            {budgetInvalid && (
+              <span id="budget-hint" className={styles.fieldError} data-testid="budget-hint">
+                Enter an amount like 1200 or 1,200.
+              </span>
+            )}
           </label>
           {isCopilot && (
             <>
@@ -534,8 +538,8 @@ export function Home({
         {market && (
           <MarketCheckCard
             prices={comparables.prices}
-            asking={askingN}
-            limit={budgetN}
+            asking={askingN!}
+            limit={budgetN!}
           />
         )}
         {showSimilarDeals && (
