@@ -20,6 +20,14 @@ export default async function globalSetup(): Promise<void> {
     throw new Error(`Backend health check failed: ${JSON.stringify(health)}`);
   }
 
+  // 2. In live mode, skip the trivial run: it would spend real LLM calls
+  if (process.env.HAGGLE_LIVE === "1") {
+    console.log(
+      "GLOBAL SETUP: live mode, skipping the trivial-run contract check (it would spend LLM calls)",
+    );
+    return;
+  }
+
   // 2. Create a trivial run
   const run = await json<{ id: string }>("http://127.0.0.1:8000/negotiations", {
     method: "POST",

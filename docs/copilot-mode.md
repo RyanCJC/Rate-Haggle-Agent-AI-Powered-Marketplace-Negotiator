@@ -16,6 +16,7 @@ With no listing text, the facts are unknown; the agent is instructed not to stat
 to ask instead. With listing text, its draft is grounded against the listing and seller-chat facts.
 The user's own edits are not checked against item facts; they still go through the existing price and
 limit validation.
+Up to eight comparable prices may be entered; each must be at least RM 10.
 
 Fact extraction and claim checking cover the supported fact keys and recognized wording. They are
 not a general guarantee that every possible item statement will be recognized or checked.
@@ -30,7 +31,7 @@ negotiation strategy.
 
 ## Flow
 
-1. Choose Copilot, set the asking price and limit, and optionally enter a category, listing text,
+1. Choose Copilot, set the asking price and limit (both at least RM 10), and optionally enter a category, listing text,
    comparable prices, item title, and the seller's first message.
 2. Read or edit the generated draft, copy it, then send it to the seller yourself.
 3. Paste the seller's answer and submit it to Haggle.

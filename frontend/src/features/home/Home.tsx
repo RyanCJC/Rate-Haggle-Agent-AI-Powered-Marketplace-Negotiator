@@ -6,7 +6,7 @@ import { Badge } from "../../ui/badge/badge";
 import { formatRm } from "../../lib/format";
 import { marketCheck, parseComparables } from "../../lib/listing";
 import { dealSummary, formatMatch, shouldShowSimilarDeals } from "../../lib/memory";
-import { parseMoney } from "../../lib/money";
+import { parseMoney, isAmountValid, MIN_AMOUNT } from "../../lib/money";
 import { CATEGORIES } from "../../lib/categories";
 import { MarketCheckCard } from "../listing/MarketCheckCard";
 import type { Autonomy, Channel, Deal, ListingCategory, Mode, Style } from "../../types";
@@ -125,10 +125,10 @@ export function Home({
 
   const askingN = parseMoney(asking);
   const budgetN = parseMoney(budget);
-  const askingValid = askingN !== null;
-  const budgetValid = budgetN !== null;
-  const askingInvalid = asking.trim() !== "" && askingN === null;
-  const budgetInvalid = budget.trim() !== "" && budgetN === null;
+  const askingValid = isAmountValid(askingN);
+  const budgetValid = isAmountValid(budgetN);
+  const askingInvalid = asking.trim() !== "" && !isAmountValid(askingN);
+  const budgetInvalid = budget.trim() !== "" && !isAmountValid(budgetN);
   const valid = askingValid && budgetValid;
   const budgetAtOrAboveAsking = valid && budgetN >= askingN;
   const isCopilot = mode === "copilot";
@@ -336,7 +336,9 @@ export function Home({
             />
             {askingInvalid && (
               <span id="asking-hint" className={styles.fieldError} data-testid="asking-hint">
-                Enter an amount like 1200 or 1,200.
+                {asking.trim() !== "" && askingN !== null && askingN < MIN_AMOUNT
+                  ? "Enter an amount of at least RM 10."
+                  : "Enter an amount like 1200 or 1,200."}
               </span>
             )}
           </label>
@@ -353,7 +355,9 @@ export function Home({
             />
             {budgetInvalid && (
               <span id="budget-hint" className={styles.fieldError} data-testid="budget-hint">
-                Enter an amount like 1200 or 1,200.
+                {budget.trim() !== "" && budgetN !== null && budgetN < MIN_AMOUNT
+                  ? "Enter an amount of at least RM 10."
+                  : "Enter an amount like 1200 or 1,200."}
               </span>
             )}
           </label>

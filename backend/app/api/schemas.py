@@ -12,9 +12,12 @@ def clean(text: str) -> str:
     return _CONTROL.sub("", text).strip()
 
 
+MIN_AMOUNT = Decimal(10)  # minimum asking price and budget in RM
+
+
 class StartRequest(BaseModel):
-    asking: Decimal = Field(gt=0)
-    budget: Decimal = Field(gt=0)
+    asking: Decimal = Field(ge=MIN_AMOUNT)
+    budget: Decimal = Field(ge=MIN_AMOUNT)
     persona: str = "flexible"
     style: Literal["aggressive", "balanced", "safe"] = "balanced"
     autonomy: Literal["auto", "approve_close"] = "approve_close"
@@ -24,7 +27,14 @@ class StartRequest(BaseModel):
     seller_opening: str | None = Field(default=None, max_length=4000)
     category: (
         Literal[
-            "monitors", "phones", "laptops", "cameras", "consoles", "furniture", "appliances", "other"
+            "monitors",
+            "phones",
+            "laptops",
+            "cameras",
+            "consoles",
+            "furniture",
+            "appliances",
+            "other",
         ]
         | None
     ) = None
@@ -42,6 +52,8 @@ class StartRequest(BaseModel):
     def prices_positive(cls, value: list[Decimal] | None) -> list[Decimal] | None:
         if value and any(price <= 0 for price in value):
             raise ValueError("comparable prices must be above zero")
+        if value and any(price < MIN_AMOUNT for price in value):
+            raise ValueError(f"comparable prices must be at least RM {MIN_AMOUNT}")
         return value
 
     @model_validator(mode="after")

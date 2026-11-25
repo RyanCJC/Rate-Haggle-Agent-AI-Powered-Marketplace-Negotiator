@@ -3,6 +3,7 @@ import path from "path";
 
 const ROOT = path.join(process.cwd(), "..");
 const REUSE_SERVERS = process.env.REUSE_SERVERS === "1";
+const HAGGLE_LIVE = process.env.HAGGLE_LIVE === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -33,10 +34,15 @@ export default defineConfig({
           ? path.join(ROOT, ".venv", "Scripts", "python.exe") + " -m uvicorn backend.app.api.main:app --port 8000"
           : path.join(ROOT, ".venv", "bin", "python") + " -m uvicorn backend.app.api.main:app --port 8000",
       cwd: ROOT,
-      env: { ...process.env, PYTHONPATH: ROOT, HAGGLE_LLM: "offline", MARKETPLACE_CHANNEL: "on" },
-      // e2e must never call a real LLM: offline is opt-in (see backend/app/settings.py)
+      env: (() => {
+        const base = { ...process.env, PYTHONPATH: ROOT, MARKETPLACE_CHANNEL: "on" };
+        if (!HAGGLE_LIVE) base.HAGGLE_LLM = "offline";
+        else base.HAGGLE_LLM = "live";    // else delete base.HAGGLE_LLM;
+        return base;
+      })(),
+      // e2e runs offline by default; set HAGGLE_LIVE=1 to test against a real LLM
       url: "http://127.0.0.1:8000/health",
-      reuseExistingServer: REUSE_SERVERS,
+      reuseExistingServer: REUSE_SERVERS && !HAGGLE_LIVE,
       timeout: 120000,
     },
     {

@@ -116,6 +116,24 @@ def test_bad_requests_are_refused():
                                                   "autonomy": "wild"}).status_code == 422
         assert client.post("/negotiations", json={"asking": 1200, "budget": 900,
                                                   "persona": "nobody"}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 9, "budget": 1000}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 0.5, "budget": 1000}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 1200, "budget": 9}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 10, "budget": 10}).status_code == 201
+        # Comparable prices below RM 10 are rejected (MIN_AMOUNT)
+        assert client.post("/negotiations", json={"asking": 1000, "budget": 1000,
+                                                  "comparables": [1]}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 1000, "budget": 1000,
+                                                  "comparables": [100, 5]}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 1000, "budget": 1000,
+                                                  "comparables": [10]}).status_code == 201
+        # Comparable prices below RM 10 are rejected
+        assert client.post("/negotiations", json={"asking": 1200, "budget": 1000,
+                                                  "comparables": [5]}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 1200, "budget": 1000,
+                                                  "comparables": [100, 5]}).status_code == 422
+        assert client.post("/negotiations", json={"asking": 1200, "budget": 1000,
+                                                  "comparables": [10]}).status_code == 201
         assert client.get("/negotiations/nope").status_code == 404
         assert client.post("/negotiations/nope/decision", json={"verdict": "approve"}
                            ).status_code == 404

@@ -154,14 +154,14 @@ test.describe("@copilot-inputs", () => {
 
   // ════════════════════════════════════════════════════════════════════════════
   // G1 @inputs-form — UI form validation (asking/budget strings)
-  // ════════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════════
   //
-  // Home.tsx rules (file:line):
-  //   askingValid = asking.trim() !== "" && Number.isFinite(askingN) && askingN > 0   (Home.tsx:128)
-  //   budgetValid = budget.trim() !== "" && Number.isFinite(budgetN) && budgetN > 0   (Home.tsx:129)
-  //   valid = askingValid && budgetValid                                              (Home.tsx:130)
+  // Home.tsx rules:
+  //   askingValid = isAmountValid(parseMoney(asking))   (Home.tsx:128)
+  //   budgetValid = isAmountValid(parseMoney(budget))   (Home.tsx:129)
   //   Start disabled when !valid                                                      (Home.tsx:525)
-  //   inline field errors: "Enter a valid asking price." / "Enter a valid budget."    (Home.tsx:211,215)
+  //   inline field errors: "Enter an amount like 1200 or 1,200." /
+  //                        "Enter an amount of at least RM 10."                     (Home.tsx:340,358)
 
   const FORM_CASES: Array<{
     asking: string;
@@ -189,6 +189,9 @@ test.describe("@copilot-inputs", () => {
     { asking: "12,34,567", budget: "1000", outcome: "rejected", errorField: "asking" }, // bad grouping
     { asking: "  1200  ", budget: "  1000  ", outcome: "accepted" }, // trimmed
     { asking: "99999999", budget: "1000", outcome: "accepted" }, // very large valid
+    { asking: "9", budget: "1000", outcome: "rejected", errorField: "asking" }, // below RM 10
+    { asking: "1200", budget: "9", outcome: "rejected", errorField: "budget" }, // below RM 10
+    { asking: "10", budget: "10", outcome: "accepted" }, // minimum RM 10
   ];
 
   for (const c of FORM_CASES) {
@@ -278,6 +281,13 @@ test.describe("@copilot-inputs", () => {
     { name: "marketplace with seller_opening", body: { asking: 1200, budget: 1000, channel: "marketplace", mode: "copilot", seller_opening: "Hello" }, expectedStatus: 422, createsRun: false },
     // persona: unknown -> 422 (validated at start for all modes)
     { name: "invalid persona", body: { asking: 1200, budget: 1000, persona: "not_a_persona", mode: "copilot" }, expectedStatus: 422, createsRun: false },
+    // below minimum RM 10
+    { name: "asking below minimum", body: { asking: 9, budget: 1000, mode: "copilot" }, expectedStatus: 422, createsRun: false },
+    { name: "budget below minimum", body: { asking: 1200, budget: 9, mode: "copilot" }, expectedStatus: 422, createsRun: false },
+    // comparable price below minimum RM 10
+    { name: "comparable below minimum", body: { asking: 1200, budget: 1000, mode: "copilot", comparables: [1] }, expectedStatus: 422, createsRun: false },
+    // comparable at minimum RM 10
+    { name: "comparable at minimum", body: { asking: 1200, budget: 1000, mode: "copilot", comparables: [10] }, expectedStatus: 201, createsRun: true },
   ];
 
   for (const c of API_CASES) {
