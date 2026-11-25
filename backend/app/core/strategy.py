@@ -8,28 +8,30 @@ AT_CEILING_SHARE = Decimal("0.97")  # "at our ceiling" means offer >= 97% of the
 
 
 class StrategyParams(BaseModel):
-    opening_ratio: Decimal = Decimal("0.70")  # first offer = ratio x reference price
+    opening_ratio: Decimal = Decimal("0.75")  # first offer = ratio x reference price
     beta: float = Field(default=1.5, gt=0)  # >1 concede slowly, <1 concede fast
     horizon: int = Field(default=6, ge=2)  # total number of offers we will make
     walk_away_ratio: Decimal = Decimal("0.92")  # never pay more than ratio x reference
     patience: int = Field(default=3, ge=1)  # stalled seller rounds before we walk away
     max_step_ratio: Decimal = Decimal("0.08")  # biggest raise per round, share of reference
     budget_cushion: Decimal = Decimal("0.97")  # never plan to spend the whole budget
-    opening_cap: Decimal = Decimal("0.85")  # first offer never above this share of the limit
+    opening_cap: Decimal = Decimal("0.90")  # first offer never above this share of the limit
 
 
 STYLES: dict[str, StrategyParams] = {
     "aggressive": StrategyParams(
-        opening_ratio=Decimal("0.62"),
+        opening_ratio=Decimal("0.72"),  
         beta=2.2,
         horizon=7,
         walk_away_ratio=Decimal("0.88"),
         patience=4,
         max_step_ratio=Decimal("0.06"),
     ),
-    "balanced": StrategyParams(),
+    "balanced": StrategyParams(
+        opening_ratio=Decimal("0.80"),
+    ),
     "safe": StrategyParams(
-        opening_ratio=Decimal("0.78"),
+        opening_ratio=Decimal("0.88"), 
         beta=1.0,
         horizon=4,
         walk_away_ratio=Decimal("0.95"),
