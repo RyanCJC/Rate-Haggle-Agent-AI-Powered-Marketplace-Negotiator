@@ -160,6 +160,9 @@ export const sendToMarketplace = (id: string, sentText?: string) =>
 export const resumeRun = (id: string) =>
   request<{ accepted: boolean }>(`/negotiations/${id}/resume`, { method: "POST" });
 
+export const retryRun = (id: string) =>
+  request<{ accepted: boolean }>(`/negotiations/${id}/retry`, { method: "POST" });
+
 export const getPickupOptions = (id: string, count = 5) =>
   request<PickupOptions>(`/negotiations/${id}/pickup/options?count=${count}`);
 

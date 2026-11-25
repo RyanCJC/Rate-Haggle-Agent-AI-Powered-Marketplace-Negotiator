@@ -23,6 +23,7 @@ from backend.app.graph.control import (
 from backend.app.graph.manual import ManualSellerPort
 from backend.app.graph.nodes import check_draft, context, decision_of
 from backend.app.graph.ports import CalendarError, SimSellerPort
+from backend.app.llm.client import LLMRejectedError, LLMUnavailableError
 from backend.app.llm.fake import RuleBasedLLM
 from backend.app.logs import run_id_var
 from backend.app.memory.context import memory_notes
@@ -102,7 +103,7 @@ class Service:
         self._guard = threading.Lock()
         self._locks: dict[str, threading.Lock] = {}
         self._busy: set[str] = set()
-        self._errors: dict[str, str] = {}
+        self._errors: dict[str, dict[str, str | None]] = {}
 
     # -- commands ---------------------------------------------------------------------------
 
@@ -173,6 +174,20 @@ class Service:
             self._release(run_id)
             raise
         self._pool.submit(self._drive, run_id, "resume", None)
+
+    def retry_run(self, run_id: str) -> None:
+        """Resume a failed run whose last error was a transient LLM failure.
+
+        The graph continues from its checkpoint: only the failed node (and the nodes after
+        it) run again, never the nodes that already completed. Only runs with
+        error_kind == "llm_unavailable" qualify.
+        """
+        self._config(run_id)  # NotFound for an unknown id
+        error = self._errors.get(run_id)
+        if not error or error.get("kind") != "llm_unavailable":
+            raise Conflict("this run is not retryable")
+        self._reserve(run_id)  # Conflict if the run is busy: guards double-clicks
+        self._pool.submit(self._drive, run_id, "retry", None)
 
     # -- pickup (copilot) -------------------------------------------------------------------
     def pickup_options(self, run_id: str, count: int = 5) -> dict:
@@ -267,7 +282,8 @@ class Service:
             "id": run_id,
             "status": status,
             "config": config,
-            "error": error,
+            "error": error["message"] if error else None,
+            "error_kind": error["kind"] if error else None,
             "question": question,
             "outcome": values.get("outcome"),
             "final_price": None if final_price is None else str(final_price),
@@ -475,13 +491,31 @@ class Service:
                     graph = self._graph(config, port)
                     if mode in ("decide", "reply", "stop", "send"):
                         decide(graph, run_id, payload)
+                    elif mode == "retry":
+                        graph.invoke(None, config=make_config(run_id))
                     else:
                         approve(graph, run_id)
                 self._remember(run_id, config)
+        except LLMUnavailableError as error:
+            self._errors[run_id] = {
+                "kind": "llm_unavailable",
+                "message": "The AI model was unavailable. Nothing was sent to the seller. Your progress is saved.",
+            }
+            logger.error("run failed: llm_unavailable (at %s)", where(error))
+        except LLMRejectedError as error:
+            self._errors[run_id] = {
+                "kind": "llm_rejected",
+                "message": f"{type(error).__name__}: {str(error)[:200]}",
+            }
+            logger.error("run failed: %s (at %s)", self._errors[run_id]["message"], where(error))
         except Exception as error:  # noqa: BLE001 - a failed run is reported, never lost
-            self._errors[run_id] = f"{type(error).__name__}: {str(error)[:200]}"
-            logger.error("run failed: %s (at %s)", self._errors[run_id], where(error))
+            self._errors[run_id] = {
+                "kind": None,
+                "message": f"{type(error).__name__}: {str(error)[:200]}",
+            }
+            logger.error("run failed: %s (at %s)", self._errors[run_id]["message"], where(error))
         else:
+            self._errors.pop(run_id, None)  # the run recovered: clear any earlier failure
             logger.info("run %s done in %.1fs", mode, time.monotonic() - started)
         finally:
             self._release(run_id)

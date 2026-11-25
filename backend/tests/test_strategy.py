@@ -29,7 +29,8 @@ def test_opening_offer_is_below_asking_and_capped_below_limit():
     d = decide(state, BAL)
     limit = price_limit(state, BAL)
     assert d.kind == "offer"
-    assert d.price == Decimal(740)
+    # limit = 873, opening_cap = 0.90, so target = 873 x 0.90 = 785.70, floored to RM 785
+    assert d.price == Decimal(785)
     assert d.price <= limit * BAL.opening_cap
 
 
@@ -77,7 +78,8 @@ def test_first_offer_never_hints_at_the_budget(asking, budget_ratio, style):
     state = StrategyState(asking_price=asking_d, max_budget=budget, seller_prices=[asking_d])
     d = decide(state, STYLES[style])
     assert d.kind == "offer"
-    assert d.price <= budget * Decimal("0.85")
+    # opening_cap raised from 0.85 to 0.90 on purpose (gentler openings); see docs
+    assert d.price <= budget * Decimal("0.90")
 
 
 

@@ -79,6 +79,7 @@ export interface Snapshot {
     comparables?: string[] | null;
   };
   error: string | null;
+  error_kind: string | null;
   question: Question | null;
   outcome: string | null;
   final_price: string | null;

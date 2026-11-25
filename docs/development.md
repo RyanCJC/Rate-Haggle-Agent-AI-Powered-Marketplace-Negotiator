@@ -104,9 +104,33 @@ roughly 8 personas x up to 3 sends = up to 24 LLM calls. Reset the variables aft
 Remove-Item Env:HAGGLE_LIVE
 Remove-Item Env:HAGGLE_LIVE_PERSONAS
 ```
-```
+
+## LLM retries and timeouts
+
+The LLM client wrapper (`backend/app/llm/client.py`) guards every model call:
+
+- `LLM_TIMEOUT_S` (default `45`): per-call timeout, applied to each request.
+- `LLM_MAX_RETRIES` (default `3`): retries only transient failures — HTTP 429, 500, 502, 503, 504, timeouts and connection errors. A `Retry-After` header is honoured when present; otherwise the client waits with exponential backoff plus jitter: about 2s, 6s, 15s, capped. The SDK's own `max_retries` is set to `0` so retries are not multiplied.
+- Worst case per call: `(LLM_MAX_RETRIES + 1) × LLM_TIMEOUT_S` plus the backoff sleeps — about `4 × 45 + 23 ≈ 203s` at the defaults, so a single LLM call is always bounded.
+- Every attempt, retries included, counts against the existing 13-calls-per-minute client limit.
+- Logs record the attempt number and error class only — never keys, URLs with keys, prompts, or the budget.
+
+When all retries are exhausted the run ends as `status: "failed"` with `error_kind: "llm_unavailable"` and the message
+"The AI model was unavailable. Nothing was sent to the seller. Your progress is saved."
+The raw exception text stays in the logs; the API response never contains it. 400/401/403/404 rejections are never retried and fail immediately with `error_kind: "llm_rejected"`.
+
+## Retrying a failed run: POST /negotiations/{id}/retry
+
+`POST /negotiations/{run_id}/retry` resumes a failed run from its LangGraph Postgres checkpoint:
+
+- `202` — the run was `failed` with `error_kind: "llm_unavailable"`; the graph continues from the failed node (nodes that already completed are not re-run) and the status returns to `running`.
+- `404` — unknown run id.
+- `409` — the run is not retryable (not failed, or a failure kind other than `llm_unavailable`) or already running; the latter also guards double-clicks so two concurrent retries run the graph at most once.
+
+A replay never repeats a send: the checkpoint shows whether `send_offer`/`send_message` already executed for a turn, and the marketplace turn rules answer again without sending, so an approved draft is sent exactly once.
 
 ## Lint
+
 
 Backend:
 
@@ -156,6 +180,17 @@ version. Development runs write `eval/reports/dev_*` (ignored by git); the two c
 `final_test_report.md` and `round2_test_report.md`. run_scenarios.py, compare_b1.py and
 eval_grounding.py each take `--live` to use a real model; without it they use RuleBasedLLM or
 NaiveBuyerLLM test doubles and run offline.
+
+## Strategy parameters
+
+The price strategy lives in `backend/app/core/strategy.py` (`StrategyParams`). The round-1
+defaults were opening ratio 0.70 and opening cap 0.85; these were softened for user experience
+to opening ratio 0.80 and opening cap 0.90 (commit `3807010`, "adjust negotiation strategy
+parameters"). The softer opening raises the deal rate at the cost of a lower share of surplus per
+clean deal; a one-off DEV-split comparison is in `eval/reports/round3_opening_softening.md`
+(67% -> 73% deal rate, 0 rule violations for both). The round-2 grid in
+`backend/app/evaluation/round2.py` (`OPENINGS` / `BETAS`) is unchanged, and `V1_CANDIDATE` pins
+the round-1 parameters explicitly so the round-1 style stays reproducible.
 
 ## Migrations
 

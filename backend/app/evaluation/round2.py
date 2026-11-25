@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal
 from statistics import fmean
 
-from ..core.strategy import STYLES
+from ..core.strategy import STYLES, StrategyParams
 from .metrics import paired_difference, summarize, summarize_by
 from .policies import Policy, haggle_policy
 from .protocol import HEADLINE, ROUND2_HEADLINE
@@ -16,6 +16,20 @@ def candidate_name(opening: Decimal, beta: float) -> str:
     return f"cand_open{int(opening * 100)}_beta{beta}"
 
 
+# Round-1 balanced style, pinned explicitly so it stays fixed even if StrategyParams defaults
+# drift (commit 3807010 changed opening_ratio 0.70->0.75 and opening_cap 0.85->0.90).
+# V1_PARAMS is the explicit parameter pin; V1_CANDIDATE keeps its grid name so the round-2
+# grid membership test is unaffected.
+V1_PARAMS = StrategyParams(
+    opening_ratio=Decimal("0.70"),
+    beta=1.5,
+    horizon=6,
+    walk_away_ratio=Decimal("0.92"),
+    patience=3,
+    max_step_ratio=Decimal("0.08"),
+    budget_cushion=Decimal("0.97"),
+    opening_cap=Decimal("0.85"),
+)
 V1_CANDIDATE = candidate_name(Decimal("0.70"), 1.5)  # identical to the round 1 balanced style
 
 
@@ -27,6 +41,19 @@ def candidates() -> dict[str, Policy]:
             params = base.model_copy(update={"opening_ratio": opening, "beta": beta})
             grid[candidate_name(opening, beta)] = haggle_policy(params)
     return grid
+
+
+# Round-3 exploration candidate, kept outside the round-2 grid: softer opening than round 1.
+# Matches the current default haggle_balanced (opening 0.80, cap 0.90).
+NEW_BALANCED = haggle_policy(
+    STYLES["balanced"].model_copy(
+        update={
+            "opening_ratio": Decimal("0.80"),
+            "beta": 1.5,
+            "opening_cap": Decimal("0.90"),
+        }
+    )
+)
 
 
 def evaluate(results, personas) -> list[dict]:

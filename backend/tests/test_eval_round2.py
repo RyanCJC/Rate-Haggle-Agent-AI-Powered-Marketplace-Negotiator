@@ -1,9 +1,13 @@
+from decimal import Decimal
+
 from backend.app.evaluation.policies import default_policies
 from backend.app.evaluation.protocol import ASKINGS, RATIOS
 from backend.app.evaluation.round2 import (
     BETAS,
+    NEW_BALANCED,
     OPENINGS,
     V1_CANDIDATE,
+    V1_PARAMS,
     candidates,
     evaluate,
     pick_winner,
@@ -20,7 +24,24 @@ def test_grid_has_nine_candidates_and_contains_the_round_1_style():
 
 def test_the_round_1_candidate_behaves_exactly_like_the_round_1_headline():
     scenarios = build_scenarios(DEV_PERSONAS, ASKINGS, RATIOS, (0,))
-    a = run_suite({"same": candidates()[V1_CANDIDATE]}, scenarios)
+
+    # (a) V1_CANDIDATE pins the round-1 parameters explicitly: opening 0.70, beta 1.5,
+    # opening_cap 0.85, all other fields as in round 1 (the StrategyParams defaults before
+    # commit 3807010 softened them to 0.75 / 0.90).
+    assert V1_PARAMS.opening_ratio == Decimal("0.70")
+    assert V1_PARAMS.beta == 1.5
+    assert V1_PARAMS.opening_cap == Decimal("0.85")
+    assert V1_PARAMS.horizon == 6
+    assert V1_PARAMS.walk_away_ratio == Decimal("0.92")
+    assert V1_PARAMS.patience == 3
+    assert V1_PARAMS.max_step_ratio == Decimal("0.08")
+    assert V1_PARAMS.budget_cushion == Decimal("0.97")
+    assert V1_CANDIDATE == "cand_open70_beta1.5"
+
+    # (b) NEW_BALANCED (opening 0.80, beta 1.5, cap 0.90, outside the round-2 grid) behaves
+    # exactly like the current default haggle_balanced on the same scenarios. Both are run
+    # under the same policy key so the compared dumps reflect behaviour, not the policy name.
+    a = run_suite({"same": NEW_BALANCED}, scenarios)
     b = run_suite({"same": default_policies()["haggle_balanced"]}, scenarios)
     assert [r.model_dump() for r in a] == [r.model_dump() for r in b]
 

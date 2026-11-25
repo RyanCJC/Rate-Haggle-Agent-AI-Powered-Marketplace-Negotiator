@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { decide } from "../../api";
+import { decide, retryRun } from "../../api";
 import { SummaryStrip } from "./SummaryStrip";
 import { Conversation } from "./Conversation";
 import { ApprovalPanel } from "./ApprovalPanel";
@@ -30,6 +30,7 @@ export function Workspace({
   const { snapshot, trace, error, connection, refresh, reopen } = useNegotiation(runId);
   const [approving, setApproving] = useState(false);
   const [declining, setDeclining] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [activeTab, setActiveTab] = useState("activity");
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export function Workspace({
   }, [onModeChange, snapshot?.config.mode]);
 
   const notFound = !snapshot && error != null && /unknown/i.test(error);
+  const llmUnavailable = snapshot != null && snapshot.status === "failed" && snapshot.error_kind === "llm_unavailable";
   const onHome = useCallback(() => {
     window.location.hash = "";
   }, []);
@@ -62,9 +64,19 @@ export function Workspace({
     }
   }, [runId]);
 
-  const handleRetry = useCallback(() => {
-    reopen();
-  }, [reopen]);
+  const handleRetry = useCallback(async () => {
+    if (!llmUnavailable) {
+      reopen();
+      return;
+    }
+    setRetrying(true);
+    try {
+      await retryRun(runId);
+      await refresh();
+    } finally {
+      setRetrying(false);
+    }
+  }, [llmUnavailable, runId, refresh, reopen]);
   const handleArrangePickup = useCallback(() => {
     setActiveTab("deal");
     window.requestAnimationFrame(() => {
@@ -110,6 +122,21 @@ export function Workspace({
     <ErrorBoundary>
       <div className={styles.workspace}>
         <SummaryStrip snapshot={snapshot} />
+        {llmUnavailable && (
+          <div className={styles.errorState}>
+            <p className={styles.errorMessage} data-testid="run-error-message">
+              {snapshot.error}
+            </p>
+            <Button
+              variant="primary"
+              onClick={handleRetry}
+              disabled={retrying}
+              data-testid="run-retry"
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
+          </div>
+        )}
         <ConnectionsDrawer runId={runId} runActive={runActive} />
 
         {showCloseGate && question && (

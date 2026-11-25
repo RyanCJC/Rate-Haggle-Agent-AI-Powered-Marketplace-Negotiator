@@ -172,6 +172,17 @@ Haggle never broke a rule in either test round. It ties the fair baseline: safe 
 not better. Against sellers who leave quickly (round 2: 0 deals against `short_fuse` and
 `brisk_firm`) it loses deals, and a missed deal counts as 0.
 
+## Strategy parameters
+
+The evaluation tables above use the **round-1 strategy parameters**: opening ratio 0.70 and
+opening cap 0.85 (`backend/app/core/strategy.py`, `StrategyParams`). After round 1 the defaults
+were softened for user experience — opening ratio 0.80 and opening cap 0.90 — which raises the
+deal rate at the cost of a lower share of surplus per clean deal. A one-off DEV-split comparison
+of round 1 vs the softened opening is in `eval/reports/round3_opening_softening.md`
+(deal rate 67% -> 73%, 0 rule violations for both). The round-2 grid
+(`backend/app/evaluation/round2.py`, `OPENINGS` / `BETAS`) is unchanged; `V1_CANDIDATE` pins the
+round-1 parameters explicitly so the round-1 style stays reproducible.
+
 The Copilot e2e suites also include input-variation tests (form values, API validation, seller
 replies, price scales, edits, all personas). These tests found a real bug: an edited message was
 validated but the seller received the original draft. The bug is now fixed and covered by backend
@@ -235,6 +246,8 @@ Only `backend/app/settings.py` reads the environment (a test enforces it).
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres connection string |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | live model only | OpenAI-compatible endpoint, key and model name |
+| `LLM_TIMEOUT_S` | no | per-call timeout to the model in seconds (default `45`) |
+| `LLM_MAX_RETRIES` | no | retries on transient failures only: 429/5xx/timeout/connection (default `3`) |
 | `HAGGLE_LLM` | no | the exact word `offline` selects the rule-based stand-in; anything else (or unset) means the live model |
 | `EMBED_MODEL` | no | embedding model for the knowledge search (default `BAAI/bge-small-en-v1.5`) |
 | `LOG_LEVEL` | no | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |

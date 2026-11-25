@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiUrl, resetApiBaseForTesting, setApiBaseForTesting } from "./api";
-import { bookPickup, cancelPickup, getPickupOptions, replyToSeller } from "./api";
+import { bookPickup, cancelPickup, getPickupOptions, replyToSeller, retryRun } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -121,5 +121,42 @@ describe("apiUrl", () => {
   it("strips multiple trailing slashes", () => {
     setApiBaseForTesting("https://a.vercel.app///");
     expect(apiUrl("/negotiations")).toBe("https://a.vercel.app/negotiations");
+  });
+});
+
+describe("retryRun", () => {
+  it("posts to the retry endpoint and accepts a 202", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify({ accepted: true }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(retryRun("run-1")).resolves.toEqual({ accepted: true });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/negotiations/run-1/retry");
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "POST" });
+  });
+
+  it("propagates 404 for an unknown run", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify({ detail: "Not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(retryRun("run-1")).rejects.toMatchObject({ status: 404, message: "Not found" });
+  });
+
+  it("propagates 409 when the run is not retryable", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify({ detail: "conflict" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(retryRun("run-1")).rejects.toMatchObject({ status: 409, message: "conflict" });
   });
 });

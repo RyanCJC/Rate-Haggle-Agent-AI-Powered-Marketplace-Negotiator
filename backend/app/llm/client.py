@@ -1,19 +1,44 @@
 import json
 import logging
+import random
 import re
 import time
 from collections import deque
 
-from openai import OpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 from pydantic import BaseModel
-
-logger = logging.getLogger("haggle.llm")
 
 from backend.app.settings import Settings
 
+logger = logging.getLogger("haggle.llm")
+
+# HTTP status codes that are safe to retry: never 400/401/403/404 (a request or config bug).
+TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
+
+# Exponential backoff with jitter: about 2s, 6s, 15s for the first three retries, then capped.
+BACKOFF_BASE = 2.0
+BACKOFF_FACTOR = 3.0
+BACKOFF_CAP = 15.0
+BACKOFF_JITTER = 2.0
+
 
 class LLMError(RuntimeError):
-    pass
+    """The LLM could not produce a valid reply (validation/schema failure).
+
+    Nodes catch this and degrade gracefully; it is never a transient transport failure.
+    """
+
+
+class LLMUnavailableError(RuntimeError):
+    """All retries on a transient failure (429/5xx/timeout/connection) were exhausted.
+
+    Nodes must NOT catch this: it propagates so the run ends as failed with a structured
+    reason and can later be resumed with POST /negotiations/{id}/retry.
+    """
+
+
+class LLMRejectedError(RuntimeError):
+    """The request itself was rejected (400/401/403/404): never retried."""
 
 
 class CallRecord(BaseModel):
@@ -42,25 +67,69 @@ class LLMClient:
         base_url: str | None = None,
         api_key: str | None = None,
         temperature: float = 0.2,
-        max_retries: int = 2,
+        max_retries: int | None = None,
+        timeout: float | None = None,
         use_json_mode: bool = True,
         client=None,
+        sleep=None,
+        clock=None,
     ):
         env = Settings.from_env()
         self.model = model or env.llm_model
         if not self.model:
             raise ValueError("set LLM_MODEL (or pass model=)")
         self.temperature = temperature
-        self.max_retries = max_retries
+        self.max_retries = env.llm_max_retries if max_retries is None else max_retries
+        self.timeout = env.llm_timeout_s if timeout is None else timeout
         self.use_json_mode = use_json_mode
         self.calls: list[CallRecord] = []
         self._call_times: deque = deque()
         self._max_calls_per_minute = 13
         self._period_seconds = 60.0
+        self._sleep = sleep or time.sleep
+        self._now = clock or time.monotonic
         self._client = client or OpenAI(
             base_url=base_url or env.llm_base_url,
             api_key=api_key or env.llm_api_key or "not-needed",
+            max_retries=0,  # retries are handled here; never let the SDK multiply them
+            timeout=self.timeout,
         )
+
+    def _rate_limited(self) -> bool:
+        now = self._now()
+        while self._call_times and now - self._call_times[0] > self._period_seconds:
+            self._call_times.popleft()
+        return len(self._call_times) >= self._max_calls_per_minute
+
+    def _wait_for_rate_limit_slot(self) -> None:
+        """One slot per attempt: retries count against the 13/minute limit."""
+        while self._rate_limited():
+            now = self._now()
+            sleep_for = self._period_seconds - (now - self._call_times[0])
+            if sleep_for > 0:
+                logger.info(
+                    "rate limit of %d calls/minute reached: waiting %.1fs",
+                    self._max_calls_per_minute,
+                    sleep_for,
+                )
+                self._sleep(sleep_for)
+                now = self._now()
+            while self._call_times and now - self._call_times[0] > self._period_seconds:
+                self._call_times.popleft()
+
+    def _retry_delay(self, error: Exception, attempt: int) -> float:
+        """Seconds to sleep before retry number `attempt` (1-based). Honours Retry-After."""
+        response = getattr(error, "response", None)
+        headers = getattr(response, "headers", None) if response is not None else None
+        if headers is not None:
+            retry_after = headers.get("retry-after") or headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    return float(retry_after)
+                except ValueError:
+                    pass  # an HTTP-date we do not parse: fall back to backoff
+        raw = BACKOFF_BASE * (BACKOFF_FACTOR ** (attempt - 1))
+        return min(BACKOFF_CAP, raw) + random.uniform(0, BACKOFF_JITTER)
 
     def complete_json(self, system: str, user: str, schema: type[BaseModel], task: str = ""):
         schema_text = json.dumps(schema.model_json_schema())
@@ -72,35 +141,43 @@ class LLMClient:
             {"role": "user", "content": user},
         ]
         extra = {"response_format": {"type": "json_object"}} if self.use_json_mode else {}
+        attempts = self.max_retries + 1
         last_error = ""
 
-        # Rate limit: max 10 LLM calls per minute.
-        now = time.monotonic()
-        while self._call_times and now - self._call_times[0] > self._period_seconds:
-            self._call_times.popleft()
-        if len(self._call_times) >= self._max_calls_per_minute:
-            sleep_for = self._period_seconds - (now - self._call_times[0])
-            if sleep_for > 0:
-                logger.info(
-                    "rate limit of %d calls/minute reached: waiting %.1fs",
-                    self._max_calls_per_minute,
-                    sleep_for,
-                )
-                time.sleep(sleep_for)
-                now = time.monotonic()
-                while self._call_times and now - self._call_times[0] > self._period_seconds:
-                    self._call_times.popleft()
-        self._call_times.append(time.monotonic())
-
-        attempts = self.max_retries + 1
         for attempt in range(1, attempts + 1):
+            # Rate limit: every attempt, including retries, takes one of the 13 slots per minute.
+            self._wait_for_rate_limit_slot()
+            self._call_times.append(self._now())
+
             started = time.perf_counter()
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                **extra,
-            )
+            try:
+                response = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    timeout=self.timeout,
+                    **extra,
+                )
+            except (APIConnectionError, APITimeoutError) as error:
+                last_error = type(error).__name__
+                if attempt < attempts:
+                    self._retry(error, attempt, attempts, last_error)
+                    continue
+                raise LLMUnavailableError(
+                    f"{task or 'call'} failed after {attempts} attempts: {last_error}"
+                )
+            except APIStatusError as error:
+                last_error = f"{error.status_code} {type(error).__name__}"
+                if error.status_code in TRANSIENT_STATUSES:
+                    if attempt < attempts:
+                        self._retry(error, attempt, attempts, last_error)
+                        continue
+                    raise LLMUnavailableError(
+                        f"{task or 'call'} failed after {attempts} attempts: {last_error}"
+                    )
+                raise LLMRejectedError(
+                    f"{task or 'call'} was rejected: {last_error}"
+                )
             text = response.choices[0].message.content or ""
             usage = getattr(response, "usage", None)
             try:
@@ -131,7 +208,10 @@ class LLMClient:
             if ok:
                 return result
             logger.warning(
-                "invalid reply task=%s attempt=%d/%d: asking again", task or "-", attempt, attempts
+                "invalid reply task=%s attempt=%d/%d: asking again",
+                task or "-",
+                attempt,
+                attempts,
             )
             messages = [
                 *messages[:2],
@@ -145,3 +225,25 @@ class LLMClient:
 
         logger.error("llm call failed task=%s after %d attempts", task or "-", attempts)
         raise LLMError(f"{task or 'call'} failed after {attempts} attempts: {last_error}")
+
+    def _retry(self, error: Exception, attempt: int, attempts: int, last_error: str) -> None:
+        """Log at WARNING and sleep before the next attempt; the sleep is injected in tests."""
+        delay = self._retry_delay(error, attempt)
+        logger.warning(
+            "llm call attempt=%d/%d: %s; retrying", attempt, attempts, last_error
+        )
+        self._sleep(delay)
+
+    def _retry_delay(self, error: Exception, attempt: int) -> float:
+        """Seconds to sleep before retry number `attempt` (1-based). Honours Retry-After."""
+        response = getattr(error, "response", None)
+        headers = getattr(response, "headers", None) if response is not None else None
+        if headers is not None:
+            retry_after = headers.get("retry-after") or headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    return float(retry_after)
+                except ValueError:
+                    pass  # an HTTP-date we do not parse: fall back to backoff
+        raw = BACKOFF_BASE * (BACKOFF_FACTOR ** (attempt - 1))
+        return min(BACKOFF_CAP, raw) + random.uniform(0, BACKOFF_JITTER)

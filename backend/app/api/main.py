@@ -303,6 +303,11 @@ def create_app(
         call(request.app.state.service.resume_run, run_id)
         return {"accepted": True}
 
+    @app.post("/negotiations/{run_id}/retry", status_code=202)
+    def retry(run_id: str, request: Request):
+        call(request.app.state.service.retry_run, run_id)
+        return {"accepted": True}
+
     @app.post("/negotiations/{run_id}/reply", status_code=202)
     def reply(run_id: str, body: Reply, request: Request):
         call(request.app.state.service.reply_run, run_id, body.reply, body.sent_text)

@@ -20,7 +20,7 @@ from backend.app.knowledge.facts import facts_view, merge_claims, required_keys
 from backend.app.knowledge.grounding import ungrounded_claims
 from backend.app.knowledge.market import market_stats
 from backend.app.llm.clarify import choose_clarify_step
-from backend.app.llm.client import LLMError
+from backend.app.llm.client import LLMError, LLMUnavailableError
 from backend.app.llm.facts import propose_claims, verify_claims
 from backend.app.llm.guards import reconcile_intent
 from backend.app.llm.tasks import compose_message, extract_seller_intent, fmt_price
@@ -243,6 +243,17 @@ def make_nodes(llm, seller, knowledge=None, ground: bool = False, calendar=None,
                 facts=s.get("facts") if ground else None,
                 memory_notes=s.get("memory_notes") or None,
             )
+        except LLMUnavailableError:
+            # The model is out: send a safe template built from the planned price instead of
+            # failing the run. The price comes from the strategy code, never from the model.
+            decision = decision_of(s)
+            draft = fallback_message(decision)
+            if check_draft(decision, draft, context(s)):
+                raise RuntimeError("fallback template failed validation: this is a bug")
+            return {
+                "draft": draft,
+                "trace": log(s, "compose", attempt=s["retries"] + 1, fallback="llm_unavailable"),
+            }
         except LLMError as error:
             return {"draft": None, "trace": log(s, "compose", error=str(error)[:200])}
         return {"draft": draft.message, "trace": log(s, "compose", attempt=s["retries"] + 1)}
